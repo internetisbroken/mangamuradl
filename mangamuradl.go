@@ -6,22 +6,19 @@ import (
 	"fmt"
 	"time"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
+	"golang.org/x/net/publicsuffix"
+	"io"
 	"io/ioutil"
 	"errors"
-	"net/url"
-)
-import "io"
-import "os"
-//import "encoding/json"
-import "regexp"
-import (
+	"os"
+	"regexp"
+	"strings"
 	"strconv"
 	"math/rand"
+	"sync"
 )
-import "net/http/cookiejar"
-import "golang.org/x/net/publicsuffix"
-import "strings"
-import "sync"
 
 var VERSION = "v1.0(180217)"
 
@@ -29,8 +26,8 @@ func Setup() (err error) {
 	rand.Seed(time.Now().UnixNano())
 	http.DefaultClient.Timeout, _ = time.ParseDuration("20s")
 	http.DefaultClient.Transport = http.DefaultTransport
-//	http.DefaultTransport.(*http.Transport).MaxIdleConns = 0
-	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 6
+	http.DefaultTransport.(*http.Transport).MaxIdleConns = 1
+	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 1
 
 	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 	if err != nil {
@@ -391,7 +388,6 @@ func main() {
 		fmt.Printf("%v\n", err)
 		return
 	}
-fmt.Printf("version %s\n", pageId)
 
 	Setup()
 
@@ -471,5 +467,6 @@ fmt.Printf("version %s\n", pageId)
 	}
 	wait.Wait()
 
+	fmt.Printf("Done: %s\n", title);
 	return
 }
