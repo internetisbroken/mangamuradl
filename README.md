@@ -1,5 +1,11 @@
 # mangamuradl
 
+## ダウンロード
+
+以下のリンクから可能。
+
+https://github.com/internetisbroken/mangamuradl/archive/master.zip
+
 ## 使い方 (GUI)
 
 mangamuragui.exe を実行し、
