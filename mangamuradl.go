@@ -1,5 +1,10 @@
 // mangamura downloader
+//
+// 上げたらvar VERSIONを更新すること
+//
 // 2018/02/17 最初の動くもの
+// 2018/02/19 -cookieを追加(reCapture)
+
 package main
 
 import (
@@ -20,14 +25,15 @@ import (
 	"sync"
 )
 
-var VERSION = "v1.0(180217)"
+var VERSION = "v1.0.1(180219)"
 
 func Setup() (err error) {
 	rand.Seed(time.Now().UnixNano())
-	http.DefaultClient.Timeout, _ = time.ParseDuration("20s")
+	http.DefaultClient.Timeout, _ = time.ParseDuration("40s")
 	http.DefaultClient.Transport = http.DefaultTransport
 	http.DefaultTransport.(*http.Transport).MaxIdleConns = 1
 	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 1
+	http.DefaultTransport.(*http.Transport).ResponseHeaderTimeout, _ = time.ParseDuration("40s")
 
 	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 	if err != nil {
@@ -145,6 +151,13 @@ func mmSocketioServer(page string) (server string, err error) {
 		return
 	}
 
+	re0 := regexp.MustCompile(`(socket\d+\.spimg\.ch)`)
+	ma0 := re0.FindStringSubmatch(content)
+	if len(ma0) >=2 {
+		server = ma0[1]
+		return
+	}
+
 	re := regexp.MustCompile(`\Dmax\s*=\s*(\d+)\s*;`)
 
 	matched := re.FindStringSubmatch(content)
@@ -200,15 +213,15 @@ func mmPageX(pageId string) (pagex string, err error) {
 }
 
 
-func _mmPages2enginioLines(content string) (lines []string) {
+func _mmPages2enginioLines(content, cookie string) (lines []string) {
 	re := regexp.MustCompile(`"(\d+)"\s*:\s*{[^}]*"img"\s*:\s*"(.*?)".*?}`)
 	matched := re.FindAllStringSubmatch(content, -1)
 
 	for i := 0; i < len(matched); i++ {
 		num := matched[i][1]
 		url := strings.Replace(matched[i][2], `\`, "", -1)
-
-		lin0 := fmt.Sprintf(`42["request_img",{"url":"%s","cookie_data":"test","id":%s,"viewr":"o"}]`, url, num)
+		// "cookie_data":"test"
+		lin0 := fmt.Sprintf(`42["request_img",{"url":"%s","cookie_data":"%s","id":%s,"viewr":"o"}]`, url, cookie, num)
 		lin1 := fmt.Sprintf("%d:%s", len(lin0), lin0)
 
 		lines = append(lines, lin1)
@@ -216,7 +229,7 @@ func _mmPages2enginioLines(content string) (lines []string) {
 	return
 }
 
-func mmPages(pageId, pagex string) (lines []string, err error) {
+func mmPages(pageId, pagex, cookie string) (lines []string, err error) {
 	uri := fmt.Sprintf("http://mangamura.org/pages/xge6?id=%s&x=%s&1", pageId, pagex)
 	content, err := httpGetText(uri)
 	if err != nil {
@@ -224,7 +237,7 @@ func mmPages(pageId, pagex string) (lines []string, err error) {
 		return
 	}
 
-	lines = _mmPages2enginioLines(content)
+	lines = _mmPages2enginioLines(content, cookie)
 
 	return
 }
@@ -265,7 +278,7 @@ func mmsioConnect(domain string) (sid string, err error) {
 
 func mmsioRequest0(domain, sid string, lines []string) (err error) {
 	uri := _mmsioUri(domain, sid)
-	postdata := strings.Join(lines, "")
+	postdata := strings.Join(lines[:], "")
 	// fmt.Printf("post>>%s<<post", postdata)
 	content, err := httpPostText(uri, postdata)
 	if err != nil {
@@ -302,6 +315,7 @@ func _mmImageInfo(content string) (imageInfo [][]string) {
 	return
 }
 
+// return: imageinfo[i][0]: image id(1,2,...), imageinfo[i][1]: url
 func mmsioRequest1(domain, sid string) (imageInfo [][]string, err error) {
 	uri := _mmsioUri(domain, sid)
 	content, err := httpGetText(uri)
@@ -314,21 +328,42 @@ func mmsioRequest1(domain, sid string) (imageInfo [][]string, err error) {
 	return
 }
 
-func DownloadImage(root, id, url string) (err error) {
+func FindImageByNumber(root, num string) (exist bool, filename string) {
 	JPG := ".jpg"
 
 	testpostfix := []string{JPG, ""}
+	fileformat := []string{"%s/%s%s", "%s/0%s%s", "%s/00%s%s", "%s/000%s%s"}
 	for i := 0; i < len(testpostfix); i++ {
-		filename := fmt.Sprintf("%s/%s%s", root, id, testpostfix[i])
-	///fmt.Printf("testing: %s\n", filename)
-		_, e := os.Stat(filename)
-		if e == nil || os.IsExist(e) {
-			fmt.Printf("Skip: %s\n", filename)
-			return;
+		for j := 0; j < len(fileformat); j++ {
+			filename = fmt.Sprintf(fileformat[j], root, num, testpostfix[i])
+			//fmt.Printf("testing: %s\n", filename)
+			_, e := os.Stat(filename)
+			if e == nil || os.IsExist(e) {
+				exist = true
+				return;
+			}
 		}
+	}
+	exist = false
+	return
+}
+
+
+func DownloadImage(root, id, url string) (err error) {
+	JPG := ".jpg"
+
+	exists, testname := FindImageByNumber(root, id)
+	if exists {
+		fmt.Printf("Skip: %s\n", testname)
+		return
 	}
 
 	content, err := httpGetByte(url)
+	if len(content) < 10 {
+		err = errors.New("Download failured: " + url)
+		return
+	}
+
 	if err != nil {
 		return
 	}
@@ -337,8 +372,10 @@ func DownloadImage(root, id, url string) (err error) {
 	if 0xff == content[0] && 0xd8 == content[1] {
 		postfix = JPG
 	} else {
-		fmt.Printf("Unknown format. id: %s, ", id)
-		fmt.Printf("header is %x %x %x %x\n", content[0], content[1], content[2], content[3])
+		errstr := fmt.Sprintf("Unknown format. id: %s, header is %x %x %x %x\n",
+			id, content[0], content[1], content[2], content[3])
+		err = errors.New(errstr)
+		return
 	}
 
 	filename := fmt.Sprintf("%s/%s%s", root, id, postfix)
@@ -349,30 +386,36 @@ func DownloadImage(root, id, url string) (err error) {
 	defer file.Close()
 
 	_, err = file.Write(content)
+	if err != nil {
+		return
+	}
+	fmt.Printf("Saved: %s\n", filename)
 
 	return
 }
 
-func opt_pageid() (pageId string, err error) {
+func opt_pageid() (pageId, cookie string, err error) {
 	args := os.Args[1:]
+	re_cookie := regexp.MustCompile(`(?i)^--?cookie=(\S+)`)
 	re_0 := regexp.MustCompile(`p=(\w+)`)
+	re_1 := regexp.MustCompile(`(\d{9,})`)
 	for i := 0; i < len(args); i++ {
-		m_0 := re_0.FindStringSubmatch(args[i])
-		if len(m_0) >= 2 {
-			pageId = m_0[1]
-			return
-		}
-	}
-	if pageId == "" {
-		re_1 := regexp.MustCompile(`(\d{9,})`)
-		for i := 0; i < len(args); i++ {
-			m_1 := re_1.FindStringSubmatch(args[i])
-			if len(m_1) >= 2 {
-				pageId = m_1[1]
-				return
+		m_cookie := re_cookie.FindStringSubmatch(args[i])
+		if len(m_cookie) >= 2 {
+			cookie = m_cookie[1]
+		} else {
+			m_0 := re_0.FindStringSubmatch(args[i])
+			if len(m_0) >= 2 {
+				pageId = m_0[1]
+			} else {
+				m_1 := re_1.FindStringSubmatch(args[i])
+				if len(m_1) >= 2 {
+					pageId = m_1[1]
+				}
 			}
 		}
 	}
+
 	if pageId == "" {
 		err = errors.New("page id required");
 		return
@@ -383,7 +426,7 @@ func opt_pageid() (pageId string, err error) {
 func main() {
 	fmt.Printf("version %s\n", VERSION)
 
-	pageId, err := opt_pageid()
+	pageId, cookie, err := opt_pageid()
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
@@ -405,7 +448,7 @@ func main() {
 	}
 	//fmt.Printf("pagex is %v\n", pagex)
 
-	pagelist, err := mmPages(pageId, pagex)
+	pagelist, err := mmPages(pageId, pagex, cookie)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
@@ -456,9 +499,11 @@ func main() {
 			//---fmt.Printf("%s => %s\n", imageInfo[i][0], imageInfo[i][1])
 			//---DownloadImage(title, imageInfo[i][0], imageInfo[i][1])
 
-			fmt.Printf("%s => %s\n", id, url)
-			DownloadImage(root, id, url)
-
+			//fmt.Printf("%s => %s\n", id, url)
+			err := DownloadImage(root, id, url)
+			if err != nil {
+				fmt.Printf("%v\n", err)
+			}
 			wait.Done()
 		}(title, imageInfo[i][0], imageInfo[i][1])
 		if i % 16 == 15 {
