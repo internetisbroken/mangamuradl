@@ -3,7 +3,8 @@
 // 上げたらvar VERSIONを更新すること
 //
 // 2018/02/17 最初の動くもの
-// 2018/02/19 -cookieを追加(reCapture)
+// v1.0.1(180219) -cookie を追加(reCapture)
+// v1.0.2(180220) getcookie に対応
 
 package main
 
@@ -18,14 +19,16 @@ import (
 	"io/ioutil"
 	"errors"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"strconv"
 	"math/rand"
 	"sync"
+	"github.com/go-ini/ini"
 )
 
-var VERSION = "v1.0.1(180219)"
+var VERSION = "v1.0.2(180220)"
 
 func Setup() (err error) {
 	rand.Seed(time.Now().UnixNano())
@@ -394,7 +397,7 @@ func DownloadImage(root, id, url string) (err error) {
 	return
 }
 
-func opt_pageid() (pageId, cookie string, err error) {
+func get_settings() (pageId, cookie string, err error) {
 	args := os.Args[1:]
 	re_cookie := regexp.MustCompile(`(?i)^--?cookie=(\S+)`)
 	re_0 := regexp.MustCompile(`p=(\w+)`)
@@ -420,19 +423,66 @@ func opt_pageid() (pageId, cookie string, err error) {
 		err = errors.New("page id required");
 		return
 	}
+
+	if cookie == "" {
+		c, e := GetIni("mangamuradl.ini", "acookie4")
+		if c != "" && e == nil {
+			fmt.Println("Cookie loaded")
+			cookie = c
+		}
+	}
+
 	return
+}
+
+
+
+func UpdateIni(filename, key, val string) (err error) {
+	cfg, err := ini.LooseLoad(filename)
+	if err != nil {
+		return
+	}
+	cfg.Section("").NewKey(key, val)
+	err = cfg.SaveTo(filename)
+	return
+}
+
+func GetIni(filename, key string) (val string, err error) {
+	cfg, err := ini.LooseLoad(filename)
+	if err != nil {
+		return
+	}
+
+	k, err := cfg.Section("").GetKey(key)
+	if err != nil {
+		return
+	}
+
+	val = k.String()
+	return
+}
+
+func exec_getcookie() {
+	fmt.Printf("Chromeが立ち上がるので認証して下さい\n")
+	out, err := exec.Command("getcookie").Output()
+	fmt.Printf("\n%s\n", string(out))
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Printf("認証できたら、コマンドを再実行して下さい\n")
+	}
 }
 
 func main() {
 	fmt.Printf("version %s\n", VERSION)
+	Setup()
 
-	pageId, cookie, err := opt_pageid()
+
+	pageId, cookie, err := get_settings()
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
 	}
-
-	Setup()
 
 	title, err := mmTitle(pageId)
 	if err != nil {
@@ -511,6 +561,11 @@ func main() {
 		}
 	}
 	wait.Wait()
+
+	if len(pagelist) != len(imageInfo) {
+		fmt.Printf("Authentication required\n");
+		exec_getcookie()
+	}
 
 	fmt.Printf("Done: %s\n", title);
 	return

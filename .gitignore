@@ -1,5 +1,15 @@
+
 /*/
 *.pdf
+
 *~
+*.log
+*.bak
+
 *.lnk
-desktop.ini
+*.ini
+
+convert.exe
+IEDriverServer.exe
+chromedriver*
+

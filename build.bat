@@ -1,1 +1,1 @@
-go build mangamuradl.go
+go build -a -ldflags "-extldflags -static" mangamuradl.go
