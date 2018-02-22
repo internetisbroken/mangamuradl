@@ -5,6 +5,7 @@
 // 2018/02/17 最初の動くもの
 // v1.0.1(180219) -cookie を追加(reCapture)
 // v1.0.2(180220) getcookie に対応
+// v1.0.3(180222) pdf作成機能追加,分割ページ対応
 
 package main
 
@@ -26,9 +27,12 @@ import (
 	"math/rand"
 	"sync"
 	"github.com/go-ini/ini"
+	"path/filepath"
+	"github.com/sclevine/agouti"
 )
+import "archive/zip"
 
-var VERSION = "v1.0.2(180220)"
+var VERSION = "v1.0.3(180222)"
 
 func Setup() (err error) {
 	rand.Seed(time.Now().UnixNano())
@@ -352,6 +356,134 @@ func FindImageByNumber(root, num string) (exist bool, filename string) {
 }
 
 
+func splittedPage(root, id, pageurl string) (filename string, err error) {
+	err = downloadImageMagic()
+	if err != nil {
+		return
+	}
+
+	err = downloadPhantomJs()
+	if err != nil {
+		return
+	}
+
+	opt := agouti.Timeout(3)
+	driver := agouti.PhantomJS(opt)
+	//driver := agouti.ChromeDriver(opt)
+	if err = driver.Start(); err != nil {
+		return
+	}
+	defer driver.Stop()
+
+    page, err := driver.NewPage()
+    if err != nil {
+		return
+    }
+	err = page.SetImplicitWait(1000); if err != nil { return }
+	err = page.SetPageLoad(60000); if err != nil { return }
+	err = page.SetScriptTimeout(1000); if err != nil { return }
+
+	if err = page.Navigate(pageurl); err != nil {
+		return
+	}
+
+	var res interface{}
+	err = page.RunScript(`
+		var a = document.querySelectorAll("img");
+		var data = {};
+		for(var i = 0; i < a.length; i++) {
+			var element = a[i];
+			var t = 0, left = 0;
+			do {
+				t += element.offsetTop  || 0;
+				left += element.offsetLeft || 0;
+				element = element.offsetParent;
+			} while(element);
+			if(! data[t]) {
+				data[t] = {};
+			}
+			data[t][left] = a[i].src;
+		}
+
+		var comp = function(a, b) {
+			return((a*1) - (b*1));
+		}
+
+		var k0 = [];
+		for(var k in data) {
+			k0.push(k);
+		}
+		k0 = k0.sort(comp);
+
+		var line = [];
+		for(var i = 0; i < k0.length; i++) {
+			var key_0 = k0[i];
+			var k1 = [];
+			for(var t in data[key_0]) {
+				k1.push(t);
+			}
+			k1 = k1.sort(comp);
+			var urls = [];
+			for(var j = 0; j < k1.length; j++) {
+				var key_1 = k1[j];
+				urls.push(data[key_0][key_1]);
+			}
+			line.push(urls);
+		}
+		return JSON.stringify(line);
+		`, map[string]interface{}{}, &res)
+	if err != nil {
+		return
+	}
+
+	resstr := fmt.Sprintf("%v", res)
+
+	re := regexp.MustCompile(`\[([^\[]*?)\]`)
+	m := re.FindAllStringSubmatch(resstr, -1)
+
+	var filenames []string
+	for i := 0; i < len(m); i++ {
+		re := regexp.MustCompile(`"(.+?)"`)
+		m0 := re.FindAllStringSubmatch(m[i][1], -1)
+
+		command := exec.Cmd{
+			Path: "./convert",
+		}
+		command.Args = append(command.Args, command.Path)
+		command.Args = append(command.Args, "+append")
+		for j:= 0; j < len(m0); j++ {
+			//filename := fmt.Sprintf("%s/%s%s", root, id, postfix)
+			//fmt.Printf("%d-%d: %s\n", i, j, m0[j][1])
+			command.Args = append(command.Args, m0[j][1])
+		}
+		filename_0 := fmt.Sprintf("%s/%s-%d.jpg", root, id, i)
+		command.Args = append(command.Args, filename_0)
+
+		_, e := command.Output()
+		if e != nil {
+			err = e
+			return
+		}
+		filenames = append(filenames, filename_0)
+	}
+
+	command := exec.Cmd{
+		Path: "./convert",
+	}
+	command.Args = append(command.Args, command.Path)
+	command.Args = append(command.Args, "-append")
+	for i := 0; i < len(filenames); i++ {
+		command.Args = append(command.Args, filenames[i])
+	}
+	filename = fmt.Sprintf("%s/%s.jpg", root, id)
+	command.Args = append(command.Args, filename)
+	_, err = command.Output()
+
+	return
+}
+
+
+
 func DownloadImage(root, id, url string) (err error) {
 	JPG := ".jpg"
 
@@ -371,27 +503,40 @@ func DownloadImage(root, id, url string) (err error) {
 		return
 	}
 
-	var postfix string
-	if 0xff == content[0] && 0xd8 == content[1] {
-		postfix = JPG
+	var filename string
+	if 0x3c == content[0] {
+
+		filename, err = splittedPage(root, id, url)
+		if err != nil {
+			return
+		}
+
 	} else {
-		errstr := fmt.Sprintf("Unknown format. id: %s, header is %x %x %x %x\n",
-			id, content[0], content[1], content[2], content[3])
-		err = errors.New(errstr)
-		return
+
+		var postfix string
+		if 0xff == content[0] && 0xd8 == content[1] {
+			postfix = JPG
+		} else {
+			errstr := fmt.Sprintf("Unknown format: %s(%s), header is %x %x %x %x\n",
+				id, url, content[0], content[1], content[2], content[3])
+			err = errors.New(errstr)
+			return
+		}
+
+		filename = fmt.Sprintf("%s/%s%s", root, id, postfix)
+		file, e := os.Create(filename)
+		if e != nil {
+			err = e
+			return
+		}
+		defer file.Close()
+
+		_, err = file.Write(content)
+		if err != nil {
+			return
+		}
 	}
 
-	filename := fmt.Sprintf("%s/%s%s", root, id, postfix)
-	file, err := os.Create(filename)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-
-	_, err = file.Write(content)
-	if err != nil {
-		return
-	}
 	fmt.Printf("Saved: %s\n", filename)
 
 	return
@@ -472,6 +617,145 @@ func exec_getcookie() {
 		fmt.Printf("認証できたら、コマンドを再実行して下さい\n")
 	}
 }
+
+func downloadPhantomJs() (err error) {
+	file := []string{"phantomjs.exe"}
+	url := "http://phantomjs.org/download.html"
+	re := regexp.MustCompile(`(https?://[^\s"'><]+?/(phantomjs-[^/\s"'><]+?windows.zip))`)
+	msg := "必要なツール(PhantomJs)を取得しています"
+
+	err = downloadTool(file, url, re, msg)
+	return
+}
+
+func downloadImageMagic() (err error) {
+	file := []string{"convert.exe", "magic.xml"}
+	url := "https://www.imagemagick.org/script/download.php"
+	re := regexp.MustCompile(`(https?://(?:.*?\.)*imagemagick\.org/.*?([^/]*?-portable-Q16-x86\.zip))`)
+	msg := "必要なツール(ImageMagic)を取得しています"
+
+	err = downloadTool(file, url, re, msg)
+	return
+}
+
+
+func downloadTool(file []string, url string, re *regexp.Regexp, msg string) (err error) {
+	var nfound int
+	for i := 0; i < len(file); i++ {
+		_, err = os.Stat(file[i])
+		if err == nil {
+			nfound++
+		}
+	}
+	if len(file) == nfound {
+		return
+	}
+
+	fmt.Printf("%v\n", msg)
+
+	content, err := httpGetText(url)
+	if err != nil {
+		return
+	}
+
+	m := re.FindStringSubmatch(content)
+	if len(m) < 3 {
+		fmt.Printf("%v\n", m)
+		return
+	}
+
+	out, err := os.Create(m[2])
+	if err != nil {
+		return
+	}
+	defer out.Close()
+	resp, err := http.Get(m[1])
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	fmt.Printf("downloading %s\n", m[1])
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return
+	}
+	fmt.Printf("saved: %s\n", m[2])
+
+	r, err := zip.OpenReader(m[2])
+	if err != nil {
+		return
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		base := filepath.Base(f.Name)
+		//fmt.Printf("%v %v\n", base, f.Name)
+		var found bool
+		for j := 0; j < len(file); j++ {
+			if base == file[j] {
+				found = true
+			}
+		}
+		if found {
+			rc, e := f.Open();
+			if e != nil {
+				err = e
+				return
+			}
+			buf := make([]byte, f.UncompressedSize)
+			if _, e := io.ReadFull(rc, buf); e != nil {
+				err = e
+				return
+			}
+
+			if e := ioutil.WriteFile(base, buf, f.Mode()); e != nil {
+				err = e
+				return
+			}
+		}
+	}
+
+	for i := 0; i < len(file); i++ {
+		_, err = os.Stat(file[i])
+		if err != nil {
+			return
+		}
+	}
+
+	return
+}
+
+func createPdf(title string, imageInfo [][]string) (err error) {
+
+	var allFileExists bool
+	var missingFile string
+	command := exec.Cmd{
+		Path: "./convert",
+	}
+	command.Args = append(command.Args, command.Path)
+	for i := 0; i < len(imageInfo); i++ {
+		ex, file := FindImageByNumber(title, imageInfo[i][0])
+		if ex {
+			allFileExists = true
+			command.Args = append(command.Args, file)
+		} else{
+			allFileExists = false
+			missingFile = fmt.Sprintf("%s/%s.jpg", title, imageInfo[i][0])
+			break;
+		}
+	}
+	command.Args = append(command.Args, title + ".pdf")
+
+	if allFileExists {
+		_, e := command.Output()
+		err = e
+	} else {
+		fmt.Printf("createPdf skipped. file not exists: %s\n", missingFile)
+	}
+	return
+}
+
 
 func main() {
 	fmt.Printf("version %s\n", VERSION)
@@ -565,6 +849,9 @@ func main() {
 	if len(pagelist) != len(imageInfo) {
 		fmt.Printf("Authentication required\n");
 		exec_getcookie()
+	} else {
+
+		createPdf(title, imageInfo)
 	}
 
 	fmt.Printf("Done: %s\n", title);

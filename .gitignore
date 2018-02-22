@@ -5,11 +5,15 @@
 *~
 *.log
 *.bak
+*-copy-.*
 
 *.lnk
 *.ini
 
-convert.exe
-IEDriverServer.exe
+*.exe
+*.zip
+*.7z
+
+magic.xml
 chromedriver*
 
