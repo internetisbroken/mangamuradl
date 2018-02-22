@@ -2,9 +2,9 @@
 
 ## ダウンロード
 
-以下のリンクから可能。
+windows(x64)ビルドは以下のリリースページの mangamuradl.zip です。
 
-https://github.com/internetisbroken/mangamuradl/archive/master.zip
+https://github.com/internetisbroken/mangamuradl/releases
 
 ## 使い方 (GUI)
 
@@ -23,7 +23,9 @@ hxxp://mangamura.org/?p=1234567890
 
 ## getcookie の使い方
 
-GUIまたはコマンドツールを実行した場合、認証が必要な場合に実行される。
+Chromeブラウザを使用し、認証を行うプログラム。
+
+GUIまたはコマンドツールを実行した際、認証が必要な場合に実行される。
 
 デバッグ用ウェブブラウザが立ち上がるので、そこで認証を完了させるとcookieがファイル(mangamuradl.ini)に保存される。
 
@@ -41,6 +43,7 @@ chromedriver.exeを配置する。
 
 ChromeDriver: https://sites.google.com/a/chromium.org/chromedriver/downloads
 
+ファイアウォールのメッセージが出る場合、キャンセル（不許可）で問題ない。
 
 ## mangamuradl の使い方 (コマンドライン)
 
@@ -78,4 +81,12 @@ Powershellかコマンドプロンプト開いて
 ```
 javascript:document.write($.cookie("acookie4"))
 ```
+
+## 外部ツール
+
+外部ツールでファイアウォールのメッセージが出る場合、キャンセル（不許可）で問題ありません。
+
+- convert (ImageMagic) pdf作成および分割ページの処理に必要
+- phantomjs 分割ページの処理に必要
+- chromedriver 認証ページの操作に必要
 
