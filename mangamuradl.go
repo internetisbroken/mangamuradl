@@ -367,6 +367,9 @@ func splittedPage(root, id, pageurl string) (filename string, err error) {
 		return
 	}
 
+	fmt.Printf("ファイアウォールのメッセージが出る場合、\n"
+	fmt.Printf("キャンセル（不許可）を選んでも問題ありません\n")
+
 	opt := agouti.Timeout(3)
 	driver := agouti.PhantomJS(opt)
 	//driver := agouti.ChromeDriver(opt)
@@ -727,7 +730,10 @@ func downloadTool(file []string, url string, re *regexp.Regexp, msg string) (err
 }
 
 func createPdf(title string, imageInfo [][]string) (err error) {
-
+	err = downloadImageMagic()
+	if err != nil {
+		return
+	}
 	var allFileExists bool
 	var missingFile string
 	command := exec.Cmd{
