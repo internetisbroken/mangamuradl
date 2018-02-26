@@ -6,6 +6,7 @@
 // v1.0.1(180219) -cookie を追加(reCapture)
 // v1.0.2(180220) getcookie に対応
 // v1.0.3(180222) pdf作成機能追加,分割ページ対応
+// v1.0.4(180226) base64画像に対応
 
 package main
 
@@ -29,10 +30,11 @@ import (
 	"github.com/go-ini/ini"
 	"path/filepath"
 	"github.com/sclevine/agouti"
+	"encoding/base64"
 )
 import "archive/zip"
 
-var VERSION = "v1.0.3(180222)"
+var VERSION = "v1.0.4(180226)"
 
 func Setup() (err error) {
 	rand.Seed(time.Now().UnixNano())
@@ -178,6 +180,7 @@ func mmSocketioServer(page string) (server string, err error) {
 		sub := rand.Intn(max)
 		server = fmt.Sprintf("socket%d.spimg.ch", sub)
 	} else {
+		fmt.Println(content)
 		err = errors.New("Socket.io server not decided")
 	}
 
@@ -228,6 +231,7 @@ func _mmPages2enginioLines(content, cookie string) (lines []string) {
 		num := matched[i][1]
 		url := strings.Replace(matched[i][2], `\`, "", -1)
 		// "cookie_data":"test"
+//cookie = ""
 		lin0 := fmt.Sprintf(`42["request_img",{"url":"%s","cookie_data":"%s","id":%s,"viewr":"o"}]`, url, cookie, num)
 		lin1 := fmt.Sprintf("%d:%s", len(lin0), lin0)
 
@@ -262,7 +266,7 @@ func _mmsioUri(domain, sid string) (uri string) {
 	return
 }
 
-func mmsioConnect(domain string) (sid string, err error) {
+func mmsioConnect(domain string, cookie *string) (sid string, err error) {
 	uri := _mmsioUriFirst(domain)
 	content, err := httpGetText(uri)
 	if err != nil {
@@ -270,7 +274,7 @@ func mmsioConnect(domain string) (sid string, err error) {
 	}
 
 	//fmt.Printf("%s\n", content)
-
+	_eioParse(content)
 	re := regexp.MustCompile(`"sid"\s*:\s*"(.+?)"`)
 	matched := re.FindStringSubmatch(content)
 
@@ -280,18 +284,48 @@ func mmsioConnect(domain string) (sid string, err error) {
 		err = errors.New("sid Not Found")
 	}
 
+	uri = _mmsioUri(domain, sid)
+
+	lin0 := fmt.Sprintf(`42["first_connect","%s"]`, *cookie)
+	postdata := fmt.Sprintf("%d:%s", len(lin0), lin0)
+	_eioParse(postdata)
+	content, err = httpPostText(uri, postdata)
+	if err != nil {
+		return
+	}
+	//fmt.Printf("%v\n", content)
+	//fmt.Printf("%v\n", err)
+	content, err = httpGetText(uri)
+	if err != nil {
+		return
+	}
+_eioParse(content)
+	re_update := regexp.MustCompile(`"cookie_update"\s*,\s*"(.+?)"`)
+	ma_update := re_update.FindStringSubmatch(content)
+	if len(ma_update) >= 2 {
+		fmt.Printf("Update cookie:\n")
+		fmt.Printf("old:%s\n", *cookie)
+		fmt.Printf("new:%s\n", ma_update[1])
+		*cookie = ma_update[1]
+		UpdateIni("mangamuradl.ini", "acookie4", ma_update[1])
+	}
+
+	//fmt.Printf("%v\n", content)
+	//fmt.Printf("%v\n", err)
+
 	return
 }
 
 func mmsioRequest0(domain, sid string, lines []string) (err error) {
 	uri := _mmsioUri(domain, sid)
 	postdata := strings.Join(lines[:], "")
-	// fmt.Printf("post>>%s<<post", postdata)
+	//fmt.Printf("post>>%s<<post\n", postdata)
+//_eioParse(postdata)
 	content, err := httpPostText(uri, postdata)
 	if err != nil {
 		return
 	}
-	// fmt.Printf("post response>>%s<<post response", content)
+	//fmt.Printf("post response>>%s<<post response\n", content)
 
 	if ! strings.Contains(content, "ok") {
 		err = errors.New("Post request_img failured")
@@ -305,33 +339,122 @@ func _mmImageInfo(content string) (imageInfo [][]string) {
 	re := regexp.MustCompile(`:42\[.*?\]`)
 	matched := re.FindAllStringSubmatch(content, -1)
 
+	re_id := regexp.MustCompile(`"id"\s*:\s*(\d+)`)
 	re_img := regexp.MustCompile(`"img"\s*:\s*"(.*?)"`)
-	re_id := regexp.MustCompile(`"id":(\d+)`)
+	re_b := regexp.MustCompile(`"b"\s*:\s*"data:[^"]*;base64,(.*?)"`)
 
 	for i := 0; i < len(matched); i++ {
-		m_img := re_img.FindStringSubmatch(matched[i][0])
 		m_id := re_id.FindStringSubmatch(matched[i][0])
-		if len(m_img) >= 2 && len(m_id) >=2 {
-			var line [2]string
+		m_img := re_img.FindStringSubmatch(matched[i][0])
+		m_b := re_b.FindStringSubmatch(matched[i][0])
+		if len(m_id) >= 2 && (len(m_img) >=2 || len(m_b) >=2) {
+			var line [3]string
 			line[0] = m_id[1]
-			line[1] = m_img[1]
+			if len(m_img) >= 2 {
+				line[1] = m_img[1]
+			}
+			if len(m_b) >= 2 {
+				line[2] = m_b[1]
+			}
 			imageInfo = append(imageInfo, line[:])
 			//fmt.Printf("%s %s\n", m_id[1], m_img[1])
 		}
+
 	}
 	return
 }
 
-// return: imageinfo[i][0]: image id(1,2,...), imageinfo[i][1]: url
-func mmsioRequest1(domain, sid string) (imageInfo [][]string, err error) {
-	uri := _mmsioUri(domain, sid)
-	content, err := httpGetText(uri)
-	if err != nil {
-		return
-	}
-	//fmt.Printf("get response>>%s<<get response", content)
 
-	imageInfo = _mmImageInfo(content)
+
+// engin.io
+// https://github.com/socketio/engine.io-protocol
+// https://github.com/socketio/socket.io-protocol
+func _eioParse(content string) (packet_count int, err error) {
+	bytes := []byte(content)
+	pos := 0
+	for {
+		if pos > len(bytes) {
+			break
+		}
+		i := pos
+		// pos
+		// 10:42xxxxxxxxxx
+		// i
+		for {
+			if (len(bytes) > i) && '0' <= bytes[i] && bytes[i] <= '9' {
+				i++
+			} else {
+				break
+			}
+		}
+		// Now,
+		// pos
+		// 10:42xxxxxxxxxx
+		//   i
+
+		if len(bytes) <= i || bytes[i] != ':' {
+			err = errors.New("error parsing enginio")
+			return
+		}
+		size, e := strconv.Atoi(string(bytes[pos:i]))
+		if e != nil {
+			err = e
+			return
+		}
+		//fmt.Printf("[%d %d] %v\n", pos, i, size)
+
+		pos = i + 1
+		// Now,
+		//    pos
+		// 10:42xxxxxxxxxx
+		//   i
+
+		i = i + 1 + size
+		// Now,
+		//    pos
+		// 10:42xxxxxxxx12
+		//              i
+		if i > len(bytes) {
+			err = errors.New("error parsing enginio")
+			return
+		}
+
+		packet_count++
+		test := string(bytes[pos:i])
+		fmt.Printf("%.*s\n", 200, test)
+
+		pos = i
+	}
+	return
+}
+
+
+
+// return: imageinfo[i][0]: image id(1,2,...), imageinfo[i][1]: url
+func mmsioRequest1(domain, sid string, count int) (imageInfo [][]string, err error) {
+	for i := 0; ; i++ {
+		uri := _mmsioUri(domain, sid)
+		content, e := httpGetText(uri)
+		if e != nil {
+			err = e
+			return
+		}
+		//fmt.Printf("get response>>%s<<get response\n", content)
+		_eioParse(content)
+
+		_info := _mmImageInfo(content)
+		imageInfo = append(imageInfo, _info...)
+
+		if len(imageInfo) >= count {
+			break
+		}
+		if strings.Contains(content, `"require_auth"`) {
+			break
+		}
+		if len(_info) <= 0 {
+			err = errors.New("Fetching image urls failured.")
+		}
+	}
 	return
 }
 
@@ -367,7 +490,7 @@ func splittedPage(root, id, pageurl string) (filename string, err error) {
 		return
 	}
 
-	fmt.Printf("ファイアウォールのメッセージが出る場合、\n"
+	fmt.Printf("ファイアウォールのメッセージが出る場合、")
 	fmt.Printf("キャンセル（不許可）を選んでも問題ありません\n")
 
 	opt := agouti.Timeout(3)
@@ -487,7 +610,7 @@ func splittedPage(root, id, pageurl string) (filename string, err error) {
 
 
 
-func DownloadImage(root, id, url string) (err error) {
+func DownloadImage(root, id, url, base64str string) (err error) {
 	JPG := ".jpg"
 
 	exists, testname := FindImageByNumber(root, id)
@@ -496,13 +619,21 @@ func DownloadImage(root, id, url string) (err error) {
 		return
 	}
 
-	content, err := httpGetByte(url)
-	if len(content) < 10 {
-		err = errors.New("Download failured: " + url)
-		return
+	var content []byte
+	if base64str == "" && url != "" {
+		content, err = httpGetByte(url)
+		if err != nil {
+			return
+		}
+	} else {
+		content, err = base64.StdEncoding.DecodeString(base64str)
+		if err != nil {
+			return
+		}
 	}
 
-	if err != nil {
+	if len(content) < 10 {
+		err = errors.New("Download failured: " + url)
 		return
 	}
 
@@ -734,30 +865,37 @@ func createPdf(title string, imageInfo [][]string) (err error) {
 	if err != nil {
 		return
 	}
-	var allFileExists bool
-	var missingFile string
+	//var allFileExists bool
+	//var missingFile string
 	command := exec.Cmd{
 		Path: "./convert",
 	}
 	command.Args = append(command.Args, command.Path)
-	for i := 0; i < len(imageInfo); i++ {
-		ex, file := FindImageByNumber(title, imageInfo[i][0])
+//	for i := 0; i < len(imageInfo); i++ {
+	var count int
+	for i := 0; i < len(imageInfo) + 2; i++ {
+		//ex, file := FindImageByNumber(title, imageInfo[i][0])
+		num := fmt.Sprintf("%d", i)
+		ex, file := FindImageByNumber(title, num)
 		if ex {
-			allFileExists = true
+			//allFileExists = true
+			count++
 			command.Args = append(command.Args, file)
 		} else{
-			allFileExists = false
-			missingFile = fmt.Sprintf("%s/%s.jpg", title, imageInfo[i][0])
-			break;
+			//allFileExists = false
+			//missingFile = fmt.Sprintf("%s/%s.jpg", title, imageInfo[i][0])
+			//break;
 		}
 	}
-	command.Args = append(command.Args, title + ".pdf")
+	pdfname := title + ".pdf"
+	command.Args = append(command.Args, pdfname)
 
-	if allFileExists {
+	if count == len(imageInfo) {
+		fmt.Printf("Creating PDF[%s]\n", pdfname)
 		_, e := command.Output()
 		err = e
 	} else {
-		fmt.Printf("createPdf skipped. file not exists: %s\n", missingFile)
+		fmt.Printf("createPdf skipped.\n")
 	}
 	return
 }
@@ -788,12 +926,6 @@ func main() {
 	}
 	//fmt.Printf("pagex is %v\n", pagex)
 
-	pagelist, err := mmPages(pageId, pagex, cookie)
-	if err != nil {
-		fmt.Printf("%v\n", err)
-		return
-	}
-
 	sioserver, err := mmSocketioServer(pageId)
 	if err != nil {
 		fmt.Printf("%v\n", err)
@@ -803,7 +935,13 @@ func main() {
 
 	//<-- Socket.io
 
-	sid, err := mmsioConnect(sioserver)
+	sid, err := mmsioConnect(sioserver, &cookie)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return
+	}
+
+	pagelist, err := mmPages(pageId, pagex, cookie)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
@@ -815,7 +953,7 @@ func main() {
 		return
 	}
 
-	imageInfo, err := mmsioRequest1(sioserver, sid)
+	imageInfo, err := mmsioRequest1(sioserver, sid, len(pagelist))
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
@@ -832,20 +970,21 @@ func main() {
 		}
 	}
 
+	fmt.Println("-- Downloading images --")
 	wait := new(sync.WaitGroup)
 	for i := 0; i < len(imageInfo); i++ {
 		wait.Add(1)
-		go func(root, id, url string) {
+		go func(root, id, url, base64str string) {
 			//---fmt.Printf("%s => %s\n", imageInfo[i][0], imageInfo[i][1])
 			//---DownloadImage(title, imageInfo[i][0], imageInfo[i][1])
 
 			//fmt.Printf("%s => %s\n", id, url)
-			err := DownloadImage(root, id, url)
+			err := DownloadImage(root, id, url, base64str)
 			if err != nil {
 				fmt.Printf("%v\n", err)
 			}
 			wait.Done()
-		}(title, imageInfo[i][0], imageInfo[i][1])
+		}(title, imageInfo[i][0], imageInfo[i][1], imageInfo[i][2])
 		if i % 16 == 15 {
 			wait.Wait()
 		}
@@ -853,6 +992,7 @@ func main() {
 	wait.Wait()
 
 	if len(pagelist) != len(imageInfo) {
+		//fmt.Printf("len(pagelist)=%d, len(imageInfo)=%d\n", len(pagelist), len(imageInfo))
 		fmt.Printf("Authentication required\n");
 		exec_getcookie()
 	} else {
