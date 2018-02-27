@@ -2,9 +2,9 @@ function ng() {
 	echo "Command failured"
 	exit
 }
-go build -a -ldflags "-extldflags -static" mangamuradl.go ; if(!$?){ng}
+go build -a -ldflags "-extldflags -static" src/mangamuradl.go ; if(!$?){ng}
 fsc .\mangamuragui.fs --target:winexe --standalone ; if(!$?){ng}
-go build -a -ldflags "-extldflags -static" getcookie.go ; if(!$?){ng}
+go build -a -ldflags "-extldflags -static" src/getcookie.go ; if(!$?){ng}
 
 cp README.md README.txt ; if(!$?){ng}
 $files = @(

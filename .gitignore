@@ -2,6 +2,8 @@
 /*/
 *.pdf
 
+!/src/
+
 *~
 *.log
 *.bak
@@ -9,6 +11,9 @@
 
 *.lnk
 *.ini
+
+*.db
+*.sqlite3
 
 *.exe
 *.zip
