@@ -8,6 +8,7 @@
 // v1.0.3(180222) pdf作成機能追加,分割ページ対応
 // v1.0.4(180226) base64画像に対応
 // v1.1.0(180228) 安定化
+// v2.0.0(180303) 画像urlの取得方法を変更
 
 package main
 
@@ -19,21 +20,18 @@ import (
 	"golang.org/x/net/publicsuffix"
 	"errors"
 	"os"
-	"os/exec"
 	"regexp"
 	"math/rand"
 	"sync"
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
-	"log"
 	"./tools"
-	"./conf"
-	"./mm"
+	"./mmdl"
 	"./img"
 )
 
 
-var VERSION = "v1.1.0(180228)"
+var VERSION = "v2.0.0(180303)"
 
 func Setup() (err error) {
 	rand.Seed(time.Now().UnixNano())
@@ -82,23 +80,6 @@ func get_settings() (pageId string, err error) {
 	return
 }
 
-func exec_getcookie() (err error) {
-	err = tools.DownloadChromedriver()
-	if err != nil {
-		return
-	}
-
-	fmt.Printf("Chromeが立ち上がるので認証して下さい\n")
-	out, err := exec.Command("getcookie").Output()
-	fmt.Printf("\n%s\n", string(out))
-	if err != nil {
-		return
-	} else {
-		//fmt.Printf("認証できたら、コマンドを再実行して下さい\n")
-	}
-	return
-}
-
 func mkdir(dir string) bool {
 	err := os.Mkdir(dir, 0777)
 	if err != nil {
@@ -111,9 +92,15 @@ func mkdir(dir string) bool {
 }
 
 func main() {
-
 	fmt.Printf("version %s\n", VERSION)
+
 	Setup()
+
+	err := tools.DownloadChromedriver()
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return
+	}
 
 	pageId, err := get_settings()
 	if err != nil {
@@ -123,6 +110,7 @@ func main() {
 
 	dbroot := "./db/"
 	if !mkdir(dbroot) {
+		fmt.Printf("Can't create %s\n", dbroot)
 		return
 	}
 
@@ -150,152 +138,21 @@ func main() {
 		return
 	}
 
-	title, err := mm.GetTitle(pageId)
-	if err != nil {
-		fmt.Printf("%v\n", err)
-		return
-	}
-	fmt.Printf("title[%v]\n", title)
-
-	sioserver, err := mm.GetSocketioServer(pageId)
-	if err != nil {
-		fmt.Printf("%v\n", err)
-		return
-	}
-
-	//fmt.Printf("sioserver is %v\n", sioserver)
-
-	err = mm.GetPageList(pageId, db)
+	_, err = db.Exec(`
+		create table if not exists pageinfo (
+			title        text    not null
+		)`)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
 	}
 
-	reconnect := true
-	var auth bool
-	var del_cookie bool
-	var sid string
-	req_max := 1
-	ntries := 0
-	var update_cookie bool
-	var new_cookie string
 
-	var recv_auth bool
-	var recv_del bool
-	var recv_update bool
-	var recv_cookie string
-	for {
-		tx, err := db.Begin()
-		if err != nil {
-			fmt.Printf("%v\n", err)
-			return
-		}
-
-		// index: req_status
-		row := tx.QueryRow("select count(id) from page where req_status != 2")
-		var requesting int
-		err = row.Scan(&requesting)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if requesting <= 0 {
-			break
-		}
-
-		if reconnect {
-			sid, err = mm.SioConnect(sioserver)
-		}
-
-		req_cnt, err := mm.SioRequest0(sioserver, sid, tx, req_max)
-		if err != nil {
-			fmt.Printf("%v\n", err)
-			return
-		}
-		if req_cnt == 0 {
-			fmt.Printf("[FIXME] no data posted\n")
-			break
-		}
-
-		var resp_cnt int
-		resp_cnt, reconnect, auth, del_cookie, update_cookie, new_cookie, err = mm.SioRequest1(sioserver, sid, tx)
-		if err != nil {
-			fmt.Printf("%v\n", err)
-			return
-		}
-
-		if auth {
-			recv_auth = true
-		}
-		if del_cookie {
-			recv_del = true
-		}
-		if update_cookie {
-			recv_update = true
-			recv_cookie = new_cookie
-		}
-
-		if resp_cnt == 0 {
-			time.Sleep(1 * time.Second)
-			if false {
-				fmt.Printf("req_cnt %d, resp_cnt %d, reconnect %v, auth %v, del_cookie %v, update_cookie %v, new_cookie %s\n",
-					req_cnt, resp_cnt, reconnect, auth, del_cookie, update_cookie, new_cookie);
-			}
-
-			ntries++
-			if ntries >= 6 {
-				//conf.SetCookie("")
-				break
-			} else if ntries == 4 {
-				if recv_update {
-					recv_auth = false
-					recv_del = false
-					recv_update = false
-
-					conf.SetCookie(recv_cookie)
-
-				} else if recv_auth || recv_del {
-					recv_auth = false
-					recv_del = false
-					recv_update = false
-
-					fmt.Printf("Authentication required\n");
-					err = exec_getcookie()
-					if err != nil {
-						fmt.Printf("Authentication error: %v\n", err)
-						break
-					}
-				}
-			}
-
-		} else {
-			ntries = 0
-			recv_auth = false
-			recv_del = false
-		}
-
-
-		if del_cookie {
-			//UpdateIni("mangamuradl.ini", "acookie4", "")
-		}
-
-		if reconnect && (resp_cnt != req_cnt) {
-			if req_max >= 50 {
-				req_max = 24
-			} else if req_max >= 24 {
-				req_max = 7
-			} else if req_max >= 7 {
-				req_max = 1
-			}
-		} else if req_max < 10 {
-			req_max = 24
-		} else if req_max < 50 {
-			req_max = 50
-		} else if req_max <= 100 {
-			req_max = 100
-		}
-
-		tx.Commit()
-	} // loop
+	title, err := mmdl.Mmdl(pageId, db)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return
+	}
 
 	err = tools.DownloadImageMagic()
 	if err != nil {

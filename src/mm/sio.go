@@ -9,7 +9,6 @@ import (
 	"errors"
 	"encoding/json"
 	"log"
-	"reflect"
 	"os"
 	"time"
 	"database/sql"
@@ -18,9 +17,34 @@ import (
 	"../httpwrap"
 )
 
+var headers = map[string] string{
+"Connection": "keep-alive",
+"Cache-Control": "no-cache",
+"Pragma": "no-cache",
+"Accept": "*/*",
+"Origin": "http://mangamura.org",
+"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36",
+"DNT": "1",
+"Accept-Encoding": "gzip, deflate",
+"Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
+}
+
+var headers2 = map[string] string{
+"Connection": "keep-alive",
+"Cache-Control": "no-cache",
+"Pragma": "no-cache",
+"Accept": "*/*",
+"Origin": "http://mangamura.org",
+"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36",
+"Content-type": "text/plain;charset=UTF-8",
+"DNT": "1",
+"Accept-Encoding": "gzip, deflate",
+"Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
+}
+
 func SioConnect(domain string) (sid string, err error) {
 	uri := sioUriFirst(domain)
-	content, err := httpwrap.HttpGetText(uri)
+	content, err := httpwrap.HttpGetTextH(uri, headers)
 	if err != nil {
 		fmt.Printf("error in SioConnect\n")
 		return
@@ -47,8 +71,9 @@ func SioConnect(domain string) (sid string, err error) {
 		lin0 = fmt.Sprintf(`42["first_connect",""]`)
 	}
 	postdata := fmt.Sprintf("%d:%s", len(lin0), lin0)
+//fmt.Printf("post>>%s<<post\n", postdata)
 
-	content, err = httpwrap.HttpPostText(uri, postdata)
+	content, err = httpwrap.HttpPostTextH(uri, postdata, headers2)
 	if err != nil {
 		return
 	}
@@ -101,13 +126,14 @@ func SioRequest0(domain, sid string, tx *sql.Tx, req_max int) (req_num int, err 
 
 	if req_num >= 1 {
 		uri := sioUri(domain, sid)
-		content, e := httpwrap.HttpPostText(uri, postdata)
+		content, e := httpwrap.HttpPostTextH(uri, postdata, headers2)
 		if e != nil {
 			err = e
 			return
 		}
 
 		if ! strings.Contains(content, "ok") {
+			fmt.Printf("content: %s", content)
 			err = errors.New("Post request_img failured")
 			return
 		}
@@ -141,7 +167,7 @@ func SioRequest1(domain, sid string, tx *sql.Tx) (resp_num int, disconnecting, r
 			time.Sleep(500 * time.Millisecond)
 			//fmt.Println("test ping")
 			uri := sioUri(domain, sid)
-			content, e := httpwrap.HttpPostText(uri, `1:2`)
+			content, e := httpwrap.HttpPostTextH(uri, `1:2`, headers2)
 			if e != nil {
 				err = e
 				return
@@ -153,12 +179,12 @@ func SioRequest1(domain, sid string, tx *sql.Tx) (resp_num int, disconnecting, r
 		}
 
 		uri := sioUri(domain, sid)
-		content, e := httpwrap.HttpGetText(uri)
+		content, e := httpwrap.HttpGetTextH(uri, headers)
 		if e != nil {
 			err = e
 			return
 		}
-		//fmt.Printf("get response>>%s<<get response\n", content)
+		fmt.Printf("get response>>%s<<get response\n", content)
 
 		bytes := []byte(content)
 		pos := 0
@@ -182,48 +208,46 @@ func SioRequest1(domain, sid string, tx *sql.Tx) (resp_num int, disconnecting, r
 				}
 
 				var data_arr []interface {}
-				if reflect.TypeOf(data).String() == "[]interface {}" {
-					data_arr = data.([]interface {})
-				} else {
-					fmt.Printf("Unknown data type: %v\n", reflect.TypeOf(data))
-					fmt.Printf("%v\n", data)
-					log.Fatal("error")
+				switch data.(type) {
+					case []interface {}:
+						data_arr = data.([]interface {})
+					default:
+						log.Fatalf(`data is not []interface {}\n%v\n`, data)
 				}
 
 				var message string
-				if reflect.TypeOf(data_arr[0]).String() == "string" {
-					message = data_arr[0].(string)
-				} else {
-					fmt.Printf("Unknown data type: %v\n", reflect.TypeOf(data_arr[0]))
-					fmt.Printf("%v\n", data_arr[0])
-					log.Fatal("error")
+				switch data_arr[0].(type) {
+					case string:
+						message = data_arr[0].(string)
+					default:
+						log.Fatalf(`arr[0] is not string\n%v\n`, data)
 				}
 
 				if message == "return_img" || message == "return_iframe" {
 
 					var data_i map[string]interface {}
-					if reflect.TypeOf(data_arr[1]).String() ==  "map[string]interface {}" {
-						data_i = data_arr[1].(map[string]interface {})
-					} else {
-						fmt.Printf("Unknown data type: %v\n", reflect.TypeOf(data_arr[1]))
-						fmt.Printf("%v\n", data_arr[1])
-						log.Fatal("error")
+					switch data_arr[1].(type) {
+						case map[string]interface {}:
+							data_i = data_arr[1].(map[string]interface {})
+						default:
+							log.Fatalf(`arr[1] is not map[string]interface {}\n%v\n`, data)
 					}
 
 					var id int
 					var img_url string
-
-					if reflect.TypeOf(data_i["id"]).String() == "float64" {
-						id_f := data_i["id"].(float64)
-						id = int(id_f)
-					} else {
-						log.Fatal("reflect.TypeOf(data_i[id]) != float64")
+					switch data_i["id"].(type) {
+						case float64:
+							id_f := data_i["id"].(float64)
+							id = int(id_f)
+						default:
+							log.Fatalf(`"id" is not float64\n%v\n`, data)
 					}
 
-					if reflect.TypeOf(data_i["img"]).String() == "string" {
-						img_url = data_i["img"].(string)
-					} else {
-						log.Fatal("reflect.TypeOf(data_i[img]) != string")
+					switch data_i["img"].(type) {
+						case string:
+							img_url = data_i["img"].(string)
+						default:
+							log.Fatalf(`"img" is not string\n%v\n`, data)
 					}
 
 					is_frame := (message == "return_iframe")
@@ -239,33 +263,37 @@ func SioRequest1(domain, sid string, tx *sql.Tx) (resp_num int, disconnecting, r
 				} else if message == "return_blob" {
 
 					var data_i map[string]interface {}
-					if reflect.TypeOf(data_arr[1]).String() ==  "map[string]interface {}" {
-						data_i = data_arr[1].(map[string]interface {})
-					} else {
-						fmt.Printf("Unknown data type: %v\n", reflect.TypeOf(data_arr[1]))
-						fmt.Printf("%v\n", data_arr[1])
-						log.Fatal("error")
+					switch data_arr[1].(type) {
+						case map[string]interface {}:
+							data_i = data_arr[1].(map[string]interface {})
+						default:
+							log.Fatalf(`arr[1] is not map[string]interface {}\n%v\n`, data)
 					}
 
 					var id int
 					var blob_b64 string
 					var img_url string
 
-					if reflect.TypeOf(data_i["id"]).String() == "float64" {
-						id_f := data_i["id"].(float64)
-						id = int(id_f)
-					} else {
-						log.Fatal("reflect.TypeOf(data_i[id]) != float64")
+					switch data_i["id"].(type) {
+						case float64:
+							id_f := data_i["id"].(float64)
+							id = int(id_f)
+						default:
+							log.Fatalf(`"id" is not float64\n%v\n`, data)
 					}
 
-					if reflect.TypeOf(data_i["b"]).String() == "string" {
-						blob_b64 = data_i["b"].(string)
-					} else {
-						log.Fatal("reflect.TypeOf(data_i[id]) != float64")
+					switch data_i["b"].(type) {
+						case string:
+							blob_b64 = data_i["b"].(string)
+						default:
+							log.Fatalf(`"b" is not string\n%v\n`, data)
 					}
 
-					if reflect.TypeOf(data_i["img"]).String() == "string" {
-						img_url = data_i["img"].(string)
+					switch data_i["img"].(type) {
+						case string:
+							img_url = data_i["img"].(string)
+						default:
+							;
 					}
 
 					fmt.Printf("%d: blob\n", id)
@@ -284,16 +312,15 @@ func SioRequest1(domain, sid string, tx *sql.Tx) (resp_num int, disconnecting, r
 
 				} else if message == "cookie_update" {
 					cookie_update = true
-					if reflect.TypeOf(data_arr[1]).String() == "string" {
-						new_cookie = data_arr[1].(string)
-					} else {
-						log.Fatalf("data of cookie_update is not string, %v\n", reflect.TypeOf(data_arr[1]))
+					switch data_arr[1].(type) {
+						case string:
+							new_cookie = data_arr[1].(string)
+						default:
+							log.Fatalf(`arr[1] is not string\n%v\n`, data)
 					}
 
 				} else {
-					fmt.Printf("[FIXME] message: %s, %v\n", message, data_arr[1])
-					fmt.Printf("%s\n", reflect.TypeOf(data_arr[1]).String() == "string")
-					os.Exit(1)
+					log.Fatalf(`[FIXME] message: %s\n%v\n`, data)
 				}
 
 			} else if eio_num == 4 && sio_num == 1 {

@@ -37,7 +37,7 @@ func GetTitle(pageId string) (title string, err error) {
 }
 
 func GetSocketioServer(page string) (server string, err error) {
-	uri := fmt.Sprintf("http://mangamura.org/kai_pc_viewer?p=%s", page)
+	uri := fmt.Sprintf("http://mangamura.org/old_viewer?p=%s", page)
 	content, err := httpwrap.HttpGetText(uri)
 	if err != nil {
 		return
