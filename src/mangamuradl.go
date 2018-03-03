@@ -9,6 +9,7 @@
 // v1.0.4(180226) base64画像に対応
 // v1.1.0(180228) 安定化
 // v2.0.0(180303) 画像urlの取得方法を変更
+// v2.0.1(180303) increase download tool timeout
 
 package main
 
@@ -31,7 +32,7 @@ import (
 )
 
 
-var VERSION = "v2.0.0(180303)"
+var VERSION = "v2.0.1(180303)"
 
 func Setup() (err error) {
 	rand.Seed(time.Now().UnixNano())
@@ -156,11 +157,13 @@ func main() {
 
 	err = tools.DownloadImageMagic()
 	if err != nil {
+		fmt.Printf("%v\n", err)
 		return
 	}
 
 	err = tools.DownloadPhantomJs()
 	if err != nil {
+		fmt.Printf("%v\n", err)
 		return
 	}
 

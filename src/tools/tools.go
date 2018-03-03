@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"net/http"
 	"../httpwrap"
+	"time"
 )
 
 func DownloadChromedriver() (err error) {
@@ -98,6 +99,9 @@ func downloadZip(url, filename string) (err error) {
 		return
 	}
 	defer out.Close()
+	timeout := http.DefaultClient.Timeout
+	defer func() {http.DefaultClient.Timeout = timeout}()
+	http.DefaultClient.Timeout = time.Duration(600) * time.Second
 	resp, err := http.Get(url)
 	if err != nil {
 		return
