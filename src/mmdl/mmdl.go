@@ -1,4 +1,5 @@
 // 180302 created
+// 180306 add extension/uBlock0
 
 package mmdl
 
@@ -9,6 +10,7 @@ import (
 	"errors"
 	"strconv"
 	"io/ioutil"
+	"path/filepath"
 	"database/sql"
 	"../conf"
 )
@@ -16,7 +18,16 @@ import (
 
 func openDriver() (driver *agouti.WebDriver, err error) {
 	opt := agouti.Timeout(3)
-	driver = agouti.ChromeDriver(opt)
+	dir, err := filepath.Abs(`extension/uBlock0.chromium/`)
+	if err != nil {
+		return
+	}
+	args := []string{
+		fmt.Sprintf(`load-extension=%s`, dir),
+		"enable-automation",
+	}
+	opt_c := agouti.ChromeOptions("args", args)
+	driver = agouti.ChromeDriver(opt, opt_c)
 	err = driver.Start()
 	return
 }

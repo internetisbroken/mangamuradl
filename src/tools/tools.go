@@ -1,4 +1,5 @@
 // 180228 created
+// 180306 add DownloadUBlock()
 
 package tools
 
@@ -52,6 +53,47 @@ func DownloadChromedriver() (err error) {
 	}
 
 	_, err = testFileList(filelist)
+
+	return
+}
+
+func DownloadUBlock() (err error) {
+	file := []string{"extension/uBlock0.chromium/manifest.json"}
+	url := "https://github.com/gorhill/uBlock/releases/latest"
+	msg := "Chromeの拡張機能(uBlock Origin)を取得しています"
+
+	ok, _ := testFileList(file)
+	if ok {
+		return
+	}
+	fmt.Printf("%v\n", msg)
+
+	content, err := httpwrap.HttpGetText(url)
+	if err != nil {
+		return
+	}
+	re0 := regexp.MustCompile(`/(gorhill/uBlock/releases/download/[^'"]+/(uBlock0\.chromium\.zip))`)
+	ma0 := re0.FindStringSubmatch(content)
+
+	var url_zip string
+	if len(ma0) >= 3 {
+		url_zip = fmt.Sprintf("https://github.com/%s", ma0[1])
+	} else {
+		err = errors.New("DownloadUBlock: can't find latest file\n")
+		return
+	}
+
+	err = downloadZip(url_zip, "uBlock0.chromium.zip")
+	if err != nil {
+		return
+	}
+
+	err = Unzip("uBlock0.chromium.zip", "extension")
+	if err != nil {
+		return
+	}
+
+	_, err = testFileList(file)
 
 	return
 }

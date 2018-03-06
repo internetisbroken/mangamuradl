@@ -10,6 +10,7 @@
 // v1.1.0(180228) 安定化
 // v2.0.0(180303) 画像urlの取得方法を変更
 // v2.0.1(180303) increase download tool timeout
+// v2.0.2(180306) uBlock Originを使うようにした
 
 package main
 
@@ -32,7 +33,7 @@ import (
 )
 
 
-var VERSION = "v2.0.1(180303)"
+var VERSION = "v2.0.2(180306)"
 
 func Setup() (err error) {
 	rand.Seed(time.Now().UnixNano())
@@ -96,8 +97,14 @@ func main() {
 	fmt.Printf("version %s\n", VERSION)
 
 	Setup()
+	var err error
 
-	err := tools.DownloadChromedriver()
+	err = tools.DownloadChromedriver()
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return
+	}
+	err = tools.DownloadUBlock()
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return

@@ -1,4 +1,5 @@
 // 180228 created
+// 180306 add os.Remove splitted pages
 
 package img
 
@@ -208,6 +209,15 @@ func splittedPage(root string, id int, pageurl string) (filename string, err err
 	filename = fmt.Sprintf("%s/%d.jpg", root, id)
 	command.Args = append(command.Args, filename)
 	_, err = command.Output()
+	if (err != nil) {
+		return
+	}
+
+	for i := 0; i < len(filenames); i++ {
+		if err = os.Remove(filenames[i]); err != nil {
+			fmt.Printf("%v\n", filenames[i])
+		}
+	}
 
 	return
 }

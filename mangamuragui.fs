@@ -10,40 +10,45 @@ open System.Text
 
 module Main =
 
-    let form = new Form(
-        Text = "mangamuradl GUI v1.0(180218)"
-    )
+    let form =
+        new Form(
+            Text = "mangamuradl GUI v1.0(180218)"
+        )
 
-    let button = new Button(
-        Text     = "Start",
-        AutoSize = true,
-        Anchor   = AnchorStyles.Left
-    )
+    let button =
+        new Button(
+            Text     = "Start",
+            AutoSize = true,
+            Anchor   = AnchorStyles.Left
+        )
 
-    let textbox = new TextBox(
-        AutoSize = true,
-        Dock = DockStyle.Fill
-    )
+    let textbox =
+        new TextBox(
+            AutoSize = true,
+            Dock = DockStyle.Fill
+        )
 
     // log window
-    let textbox2 = new TextBox(
-        AutoSize   = true,
-        Dock       = DockStyle.Fill,
-        Multiline  = true,
-        ScrollBars = ScrollBars.Vertical
-    )
+    let textbox2 =
+        new TextBox(
+            AutoSize   = true,
+            Dock       = DockStyle.Fill,
+            Multiline  = true,
+            ScrollBars = ScrollBars.Vertical
+        )
 
     // ____________________
     // | 1.start | 2.input |
     // |-------------------|
     // |  3.logwindow      |
     // |___________________|
-    let tbl = new TableLayoutPanel(
-        // CellBorderStyle = TableLayoutPanelCellBorderStyle.OutsetDouble,
-        ColumnCount     = 2,
-        RowCount        = 2,
-        Dock            = DockStyle.Fill
-    )
+    let tbl =
+        new TableLayoutPanel(
+            // CellBorderStyle = TableLayoutPanelCellBorderStyle.OutsetDouble,
+            ColumnCount     = 2,
+            RowCount        = 2,
+            Dock            = DockStyle.Fill
+        )
 
     form.Controls.Add(tbl)
 
