@@ -3,12 +3,20 @@
 *.pdf
 
 !/src/
+!/src_gui/
 !/js/
+
+# gui resources
+*.res
+*.resx
+*.resources
+
+*.png
 
 *~
 *.log
 *.bak
-*-copy-.*
+*-.*
 
 *.lnk
 *.ini
@@ -17,6 +25,7 @@
 *.sqlite3
 
 *.exe
+*.dll
 *.zip
 *.7z
 

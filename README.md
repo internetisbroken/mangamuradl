@@ -14,6 +14,7 @@ https://github.com/internetisbroken/mangamuradl/releases
     - base64形式でエンコードされたページ(自動でデコードされる)
 - ユーザがreCAPTCHAの操作を行うことで全ページの取得が可能
 - PDF作成機能
+- ZIP作成機能
 
 ## 準備
 
@@ -37,6 +38,7 @@ https://github.com/internetisbroken/mangamuradl/releases
 1. 結果が下のテキストボックスに表示される
     1. 画像は「img/タイトル名/番号.jpg」
     1. PDFは「pdf/タイトル名.pdf」となる
+    1. ZIPは「zip/タイトル名.pdf」となる
 
 ### pageid
 
@@ -69,8 +71,15 @@ Powershellかコマンドプロンプト等で
 
 ### コマンドラインオプション
 
-とくになし
+```
+-h --help    ヘルプを表示
+-p --pdf     PDF作成機能をオンに設定*
+-P --no-pdf  PDF作成機能をオフに設定*
+-z --zip     ZIP作成機能をオンに設定*
+-Z --no-zip  ZIP作成機能をオフに設定*
 
+* 設定はiniファイルに保持される。
+```
 
 ## 外部ツール
 

@@ -1,18 +1,34 @@
-// mangamuradlgui
+// mangamuradl-gui
+//
 // v1.0(180218) first created
+// v1.1(180309) add resource(icon, cli version)
+//
+// 更新したらForm.Textも変更すること
 
-namespace Firstform
+namespace Mangamuradlgui
 open System
 open System.Drawing
 open System.Windows.Forms
 open System.Diagnostics
 open System.Text
+open System.Resources
+open System.Reflection
 
 module Main =
+    let version = "v1.1(180309)"
+
+    let executingAssembly = Assembly.GetExecutingAssembly()
+    let resources = new ResourceManager("mangamuradl-gui", executingAssembly)
+
+    let cliVersion = resources.GetString("resCliVersion")
+    let icon = resources.GetObject("resIcon0") :?> Icon
+
+    let formText = sprintf "mangamuradl GUI %s / CLI %s" version cliVersion
 
     let form =
         new Form(
-            Text = "mangamuradl GUI v1.0(180218)"
+            Text = formText,
+            Icon = icon
         )
 
     let button =
