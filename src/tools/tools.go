@@ -15,7 +15,23 @@ import (
 	"net/http"
 	"../httpwrap"
 	"time"
+	"path"
 )
+
+var toolDir = "tool/"
+
+func init() {
+	err := os.Mkdir(toolDir, 0777)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("%v\n", err)
+		}
+	}
+}
+
+func GetPath(name string) string {
+	return path.Clean(fmt.Sprintf("%s/%s", toolDir, name))
+}
 
 func DownloadChromedriver() (err error) {
 	filelist := []string{"chromedriver.exe"}
@@ -88,7 +104,7 @@ func DownloadUBlock() (err error) {
 		return
 	}
 
-	err = Unzip("uBlock0.chromium.zip", "extension")
+	err = Unzip(GetPath("uBlock0.chromium.zip"), GetPath("extension"))
 	if err != nil {
 		return
 	}
@@ -122,7 +138,7 @@ func testFileList(filelist []string) (ok bool, err error) {
 
 	var nfound int
 	for i := 0; i < len(filelist); i++ {
-		_, err = os.Stat(filelist[i])
+		_, err = os.Stat(GetPath(filelist[i]))
 		if err != nil {
 			return
 		} else {
@@ -136,7 +152,8 @@ func testFileList(filelist []string) (ok bool, err error) {
 }
 
 func downloadZip(url, filename string) (err error) {
-	out, err := os.Create(filename)
+	path := GetPath(filename)
+	out, err := os.Create(path)
 	if err != nil {
 		return
 	}
@@ -155,12 +172,12 @@ func downloadZip(url, filename string) (err error) {
 	if err != nil {
 		return
 	}
-	fmt.Printf("saved: %s\n", filename)
+	fmt.Printf("saved: %s\n", path)
 	return
 }
 
 func extractFiles(filename string, filelist []string) (err error) {
-	r, err := zip.OpenReader(filename)
+	r, err := zip.OpenReader(GetPath(filename))
 	if err != nil {
 		return
 	}
@@ -187,7 +204,7 @@ func extractFiles(filename string, filelist []string) (err error) {
 				return
 			}
 
-			if e := ioutil.WriteFile(base, buf, f.Mode()); e != nil {
+			if e := ioutil.WriteFile(GetPath(base), buf, f.Mode()); e != nil {
 				err = e
 				return
 			}

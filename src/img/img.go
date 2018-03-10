@@ -1,5 +1,6 @@
 // 180228 created
 // 180306 add os.Remove splitted pages
+// 180310 remove javascript code
 
 package img
 
@@ -7,12 +8,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
+	"io/ioutil"
 	"strings"
 	"errors"
 	"encoding/base64"
 	"github.com/sclevine/agouti"
 	"../httpwrap"
+	"../tools"
 )
 
 var jpg = ".jpg"
@@ -94,15 +96,17 @@ func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool,
 	return
 }
 
-
 func splittedPage(root string, id int, pageurl string) (filename string, err error) {
 
 	fmt.Printf("ファイアウォールのメッセージが出る場合、")
 	fmt.Printf("キャンセル（不許可）を選んでも問題ありません\n")
 
 	opt := agouti.Timeout(3)
-	driver := agouti.PhantomJS(opt)
-	//driver := agouti.ChromeDriver(opt)
+	cmd := []string{tools.GetPath("phantomjs"), "--webdriver={{.Address}}", "--ignore-ssl-errors=true"}
+	//cmd := []string{tools.GetPath("chromedriver"), "--port={{.Port}}"}
+
+	driver := agouti.NewWebDriver("http://{{.Address}}", cmd, opt)
+
 	if err = driver.Start(); err != nil {
 		return
 	}
@@ -120,103 +124,91 @@ func splittedPage(root string, id int, pageurl string) (filename string, err err
 		return
 	}
 
-	var res interface{}
-	err = page.RunScript(`
-		var a = document.querySelectorAll("img");
-		var data = {};
-		for(var i = 0; i < a.length; i++) {
-			var element = a[i];
-			var t = 0, left = 0;
-			do {
-				t += element.offsetTop  || 0;
-				left += element.offsetLeft || 0;
-				element = element.offsetParent;
-			} while(element);
-			if(! data[t]) {
-				data[t] = {};
-			}
-			data[t][left] = a[i].src;
-		}
-
-		var comp = function(a, b) {
-			return((a*1) - (b*1));
-		}
-
-		var k0 = [];
-		for(var k in data) {
-			k0.push(k);
-		}
-		k0 = k0.sort(comp);
-
-		var line = [];
-		for(var i = 0; i < k0.length; i++) {
-			var key_0 = k0[i];
-			var k1 = [];
-			for(var t in data[key_0]) {
-				k1.push(t);
-			}
-			k1 = k1.sort(comp);
-			var urls = [];
-			for(var j = 0; j < k1.length; j++) {
-				var key_1 = k1[j];
-				urls.push(data[key_0][key_1]);
-			}
-			line.push(urls);
-		}
-		return JSON.stringify(line);
-		`, map[string]interface{}{}, &res)
+	content, err := ioutil.ReadFile("js/frame.js")
 	if err != nil {
 		return
 	}
+	script := string(content)
 
-	resstr := fmt.Sprintf("%v", res)
+	var res interface{}
+	err = page.RunScript(script, map[string]interface{}{}, &res)
+	if err != nil {
+		return
+	}
+	var lines []interface {}
+	switch t := res.(type) {
+		case []interface {}:
+			lines = res.([]interface {})
+		default:
+			fmt.Printf("%v", res)
+			err = fmt.Errorf("typeof res is not []interface {}, %v", t)
+			return
+	}
 
-	re := regexp.MustCompile(`\[([^\[]*?)\]`)
-	m := re.FindAllStringSubmatch(resstr, -1)
-
-	var filenames []string
-	for i := 0; i < len(m); i++ {
-		re := regexp.MustCompile(`"(.+?)"`)
-		m0 := re.FindAllStringSubmatch(m[i][1], -1)
-
-		command := exec.Cmd{
-			Path: "./convert",
+	var file_lines []string
+	// each line
+	for i, arr := range lines {
+		var line []interface {}
+		switch t := arr.(type) {
+			case []interface {}:
+				line = arr.([]interface {})
+			default:
+				fmt.Printf("%v", res)
+				err = fmt.Errorf("typeof res[%d] is not []interface {}, %v", i, t)
+				return
 		}
-		command.Args = append(command.Args, command.Path)
-		command.Args = append(command.Args, "+append")
-		for j:= 0; j < len(m0); j++ {
-			command.Args = append(command.Args, m0[j][1])
-		}
-		filename_0 := fmt.Sprintf("%s/%d-%d.jpg", root, id, i)
-		command.Args = append(command.Args, filename_0)
 
-		_, e := command.Output()
-		if e != nil {
-			err = e
+		// join horizonally
+		cmd_horiz := exec.Cmd{
+			Path: tools.GetPath("convert"),
+		}
+		cmd_horiz.Args = append(cmd_horiz.Args, cmd_horiz.Path)
+		cmd_horiz.Args = append(cmd_horiz.Args, "+append")
+
+		for j, obj := range line {
+			var url string
+			switch t := obj.(type) {
+				case string:
+					url = obj.(string)
+				default:
+					fmt.Printf("%v", res)
+					err = fmt.Errorf("typeof res[%d][%d] is not string, %v", i, j, t)
+					return
+			}
+			cmd_horiz.Args = append(cmd_horiz.Args, url)
+		}
+
+		file_horiz := fmt.Sprintf("%s/%d-%d.jpg", root, id, i)
+		cmd_horiz.Args = append(cmd_horiz.Args, file_horiz)
+
+		_, err = cmd_horiz.Output()
+		if err != nil {
 			return
 		}
-		filenames = append(filenames, filename_0)
+		file_lines = append(file_lines, file_horiz)
 	}
 
-	command := exec.Cmd{
-		Path: "./convert",
+	// join vertically
+	cmd_vert := exec.Cmd{
+		Path: tools.GetPath("convert"),
 	}
-	command.Args = append(command.Args, command.Path)
-	command.Args = append(command.Args, "-append")
-	for i := 0; i < len(filenames); i++ {
-		command.Args = append(command.Args, filenames[i])
+	cmd_vert.Args = append(cmd_vert.Args, cmd_vert.Path)
+	cmd_vert.Args = append(cmd_vert.Args, "-append")
+	for _, file := range file_lines {
+		cmd_vert.Args = append(cmd_vert.Args, file)
 	}
 	filename = fmt.Sprintf("%s/%d.jpg", root, id)
-	command.Args = append(command.Args, filename)
-	_, err = command.Output()
+	cmd_vert.Args = append(cmd_vert.Args, filename)
+	_, err = cmd_vert.Output()
 	if (err != nil) {
 		return
 	}
 
-	for i := 0; i < len(filenames); i++ {
-		if err = os.Remove(filenames[i]); err != nil {
-			fmt.Printf("%v\n", filenames[i])
+	for _, file := range file_lines {
+		if err = os.Remove(file); err != nil {
+			fmt.Printf("%s: %v\n", file, err)
 		}
+		cmd_vert.Args = append(cmd_vert.Args, file)
 	}
 
 	return

@@ -13,12 +13,12 @@ import (
 	"path/filepath"
 	"database/sql"
 	"../conf"
+	"../tools"
 )
-//	"./conf"
 
 func openDriver() (driver *agouti.WebDriver, err error) {
 	opt := agouti.Timeout(3)
-	dir, err := filepath.Abs(`extension/uBlock0.chromium/`)
+	dir, err := filepath.Abs(tools.GetPath(`extension/uBlock0.chromium/`))
 	if err != nil {
 		return
 	}
@@ -27,7 +27,10 @@ func openDriver() (driver *agouti.WebDriver, err error) {
 		"enable-automation",
 	}
 	opt_c := agouti.ChromeOptions("args", args)
-	driver = agouti.ChromeDriver(opt, opt_c)
+
+	cmd := []string{tools.GetPath("chromedriver"), "--port={{.Port}}"}
+	driver = agouti.NewWebDriver("http://{{.Address}}", cmd, opt, opt_c)
+
 	err = driver.Start()
 	return
 }

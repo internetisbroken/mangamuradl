@@ -47,6 +47,7 @@ run mkdir $dir/js
 run cp mangamuradl.exe     $dir
 run cp mangamuradl-gui.exe $dir
 run cp js/mmdl.js          $dir/js/mmdl.js
+run cp js/frame.js         $dir/js/frame.js
 run cp README.md           $dir/README.txt
 
 $files = @(

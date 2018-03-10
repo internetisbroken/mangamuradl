@@ -27,7 +27,7 @@ func CreatePdf(imgroot, pdfpath string, db *sql.DB) (err error) {
 
 
 	command := exec.Cmd{
-		Path: "./convert",
+		Path: tools.GetPath("convert"),
 	}
 	command.Args = append(command.Args, command.Path)
 
