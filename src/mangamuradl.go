@@ -11,6 +11,7 @@
 // v2.0.0(180303) 画像urlの取得方法を変更
 // v2.0.1(180303) increase download tool timeout
 // v2.0.2(180306) uBlock Originを使うようにした
+// v2.0.3(180310) zip作成機能追加
 
 package main
 
@@ -30,10 +31,29 @@ import (
 	"./tools"
 	"./mmdl"
 	"./img"
+	"./conf"
 )
 
+var VERSION = "v2.0.3(180310)"
 
-var VERSION = "v2.0.2(180306)"
+func help() {
+	fmt.Printf(`
+mangamuradl [Options] PageId...
+
+PageId:
+  http://mangamura.org/?p=123456789
+  123456789
+
+Options:
+  -h --help    print help
+  -p --pdf     create pdf ON
+  -P --no-pdf  create pdf OFF
+  -z --zip     create zip ON
+  -Z --no-zip  create zip OFF
+`)
+	os.Exit(0)
+}
+
 
 func Setup() (err error) {
 	rand.Seed(time.Now().UnixNano())
@@ -51,27 +71,49 @@ func Setup() (err error) {
 	return
 }
 
-
-func get_settings() (pageId string, err error) {
+func argparse() (pageId string, err error) {
 	args := os.Args[1:]
-	re_cookie := regexp.MustCompile(`(?i)^--?cookie=(\S+)`)
-	re_0 := regexp.MustCompile(`p=(\w+)`)
-	re_1 := regexp.MustCompile(`^(\d+)$`)
-	for i := 0; i < len(args); i++ {
-		m_cookie := re_cookie.FindStringSubmatch(args[i])
-		if len(m_cookie) >= 2 {
-			// deleted
-		} else {
-			m_0 := re_0.FindStringSubmatch(args[i])
-			if len(m_0) >= 2 {
-				pageId = m_0[1]
-			} else {
-				m_1 := re_1.FindStringSubmatch(args[i])
-				if len(m_1) >= 2 {
-					pageId = m_1[1]
-				}
+
+	type ArgCheck struct {
+		re *regexp.Regexp
+		cb func([]string)
+	}
+
+	chkList := []ArgCheck{
+		ArgCheck{regexp.MustCompile(`(?i)^(?:--?|/)(?:h|help|\?)$`), func(ma []string) {
+			help()
+		}},
+		ArgCheck{regexp.MustCompile(`^--?(?:P|(?i:no-pdf))$`), func(ma []string) {
+			conf.SetPdf(false)
+		}},
+		ArgCheck{regexp.MustCompile(`^--?(?:p|(?i:pdf))$`), func(ma []string) {
+			conf.SetPdf(true)
+		}},
+		ArgCheck{regexp.MustCompile(`^--?(?:Z|(?i:no-zip))$`), func(ma []string) {
+			conf.SetZip(false)
+		}},
+		ArgCheck{regexp.MustCompile(`^--?(?:z|(?i:zip))$`), func(ma []string) {
+			conf.SetZip(true)
+		}},
+		ArgCheck{regexp.MustCompile(`p=(\w+)|^(\d+)$`), func(ma []string) {
+			if len(ma) >=2 && ma[1] != "" {
+				pageId = ma[1]
+			} else if len(ma) >=3 && ma[2] != "" {
+				pageId = ma[2]
+			}
+		}},
+	}
+
+	NEXT_ARG: for _, v := range args {
+		for _, chk := range chkList {
+			m := chk.re.FindStringSubmatch(v)
+			if len(m) >= 1 {
+				chk.cb(m)
+				continue NEXT_ARG
 			}
 		}
+		fmt.Printf("Unknown option: %v\n", v)
+		help()
 	}
 
 	if pageId == "" {
@@ -110,7 +152,7 @@ func main() {
 		return
 	}
 
-	pageId, err := get_settings()
+	pageId, err := argparse()
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
@@ -225,7 +267,7 @@ func main() {
 		return
 	}
 
-	if true {
+	if conf.IsPdf() {
 		pdfdir := "./pdf"
 		if !mkdir(pdfdir) {
 			fmt.Println("CreatePdf skipped")
@@ -233,6 +275,17 @@ func main() {
 			err = img.CreatePdf(imgroot, fmt.Sprintf("%s/%s.pdf", pdfdir, title), db)
 			if err != nil{
 				fmt.Printf("CreatePdf: %v\n", err)
+			}
+		}
+	}
+	if conf.IsZip() {
+		zipdir := "./zip"
+		if !mkdir(zipdir) {
+			fmt.Println("CreateZip skipped")
+		} else {
+			err = img.CreateZip(imgroot, fmt.Sprintf("%s/%s.zip", zipdir, title), db)
+			if err != nil{
+				fmt.Printf("CreateZip: %v\n", err)
 			}
 		}
 	}
