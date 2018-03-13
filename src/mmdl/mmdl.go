@@ -1,5 +1,6 @@
 // 180302 created
 // 180306 add extension/uBlock0
+// 180312 add base64 error case
 
 package mmdl
 
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"errors"
 	"strconv"
+	"regexp"
 	"io/ioutil"
 	"path/filepath"
 	"database/sql"
@@ -17,7 +19,6 @@ import (
 )
 
 func openDriver() (driver *agouti.WebDriver, err error) {
-	opt := agouti.Timeout(3)
 	dir, err := filepath.Abs(tools.GetPath(`extension/uBlock0.chromium/`))
 	if err != nil {
 		return
@@ -26,6 +27,8 @@ func openDriver() (driver *agouti.WebDriver, err error) {
 		fmt.Sprintf(`load-extension=%s`, dir),
 		"enable-automation",
 	}
+
+	opt := agouti.Timeout(3)
 	opt_c := agouti.ChromeOptions("args", args)
 
 	cmd := []string{tools.GetPath("chromedriver"), "--port={{.Port}}"}
@@ -183,7 +186,7 @@ func getImageUrl(db *sql.DB, page *agouti.Page) (err error) {
 	}
 
 
-	stmt, err := db.Prepare("update page set req_status = 2, url = ?, is_frame = ?, is_blob = ?, blob_b64 = ? where pagenum = ?")
+	stmt, err := db.Prepare("update page set req_status = ?, url = ?, is_frame = ?, is_blob = ?, blob_b64 = ? where pagenum = ?")
 	if err != nil {
 		return
 	}
@@ -191,6 +194,8 @@ func getImageUrl(db *sql.DB, page *agouti.Page) (err error) {
 
 	// function
 	insert := func(key string, arr []interface {}) (inserted int, err error) {
+		// request done
+		req_status := 2
 		var is_img bool
 		var is_iframe bool
 		var is_blob bool
@@ -227,6 +232,12 @@ func getImageUrl(db *sql.DB, page *agouti.Page) (err error) {
 					switch data.(map[string]interface {})["b"].(type) {
 						case string:
 							b = data.(map[string]interface {})["b"].(string)
+							re := regexp.MustCompile(`[<>\s]`)
+							if re.MatchString(b) || len(b) < 1000 {
+								req_status = 0
+								fmt.Printf("page[%d]: Not base64 string:\n%s\n", id, b)
+							}
+
 						default:
 							if is_blob {
 								err = fmt.Errorf("data/b is not string\n")
@@ -234,7 +245,7 @@ func getImageUrl(db *sql.DB, page *agouti.Page) (err error) {
 							}
 					}
 
-					_, err = stmt.Exec(img, is_iframe, is_blob, b, id)
+					_, err = stmt.Exec(req_status, img, is_iframe, is_blob, b, id)
 					if err != nil {
 						return
 					}

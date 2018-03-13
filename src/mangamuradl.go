@@ -12,6 +12,7 @@
 // v2.0.1(180303) increase download tool timeout
 // v2.0.2(180306) uBlock Originを使うようにした
 // v2.0.3(180310) zip作成機能追加
+// v2.0.4(180312) fix: base64 error case
 
 package main
 
@@ -34,7 +35,7 @@ import (
 	"./conf"
 )
 
-var VERSION = "v2.0.3(180310)"
+var VERSION = "v2.0.4(180312)"
 
 func help() {
 	fmt.Printf(`
