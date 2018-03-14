@@ -1,4 +1,5 @@
 // 180228 created
+// 180314 add convert option(-density 75 -geometry 100%)
 
 package img
 
@@ -54,6 +55,11 @@ func CreatePdf(imgroot, pdfpath string, db *sql.DB) (err error) {
 	if err != nil {
 		return
 	}
+
+	command.Args = append(command.Args, "-density")
+	command.Args = append(command.Args, "75")
+	command.Args = append(command.Args, "-geometry")
+	command.Args = append(command.Args, "100%")
 
 	command.Args = append(command.Args, pdfpath)
 
