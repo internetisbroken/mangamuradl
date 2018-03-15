@@ -1,6 +1,6 @@
 // 180228 created
 // 180306 add DownloadUBlock()
-
+// 180315 add 7za
 package tools
 
 import (
@@ -9,16 +9,20 @@ import (
 	"errors"
 	"os"
 	"io"
-	"io/ioutil"
-	"archive/zip"
-	"path/filepath"
 	"net/http"
 	"../httpwrap"
 	"time"
 	"path"
+	"strings"
 )
 
 var toolDir = "tool/"
+
+type Tool struct {
+	Dir string
+	Exe string
+	GetReq func() (*http.Request, string, error)
+}
 
 func init() {
 	err := os.Mkdir(toolDir, 0777)
@@ -29,222 +33,291 @@ func init() {
 	}
 }
 
-func GetPath(name string) string {
+func getPath(name string) string {
 	return path.Clean(fmt.Sprintf("%s/%s", toolDir, name))
 }
 
-func DownloadChromedriver() (err error) {
-	filelist := []string{"chromedriver.exe"}
-	msg := "必要なツール(chromedriver)を取得しています"
 
-	ok, _ := testFileList(filelist)
-	if ok {
-		return
-	}
+////////////////////////////////////////////////////////////
+// Chromedriver: https://sites.google.com/a/chromium.org/chromedriver/home
+////////////////////////////////////////////////////////////
+var chromedriver = Tool{
+	Dir: "chromedriver",
+	Exe: "chromedriver",
+	GetReq: reqChromedriver,
+}
+func GetChromedriver() (exe string, err error) {
+	return getBin(chromedriver)
+}
+func reqChromedriver() (req *http.Request, zipName string, err error) {
+	fmt.Printf("必要なツール(chromedriver)を取得しています\n")
 
-	fmt.Printf("%v\n", msg)
-
-	var url string
-
-	content, err := httpwrap.HttpGetText("https://sites.google.com/a/chromium.org/chromedriver/downloads")
+	zipName = "chromedriver_win32.zip"
+	u0 := "https://sites.google.com/a/chromium.org/chromedriver/downloads"
+	content, err := httpwrap.HttpGetText(u0)
 	if err != nil {
 		return
 	}
+
 	re0 := regexp.MustCompile(`://chromedriver\.storage\.googleapis\.com/index\.html\?path=([^"'><]+?)/`)
 	ma0 := re0.FindStringSubmatch(content)
-	if len(ma0) >= 2 {
-		url = fmt.Sprintf("https://chromedriver.storage.googleapis.com/%s/chromedriver_win32.zip", ma0[1])
-	} else {
-		err = errors.New("DownloadChromedriver: can't find latest file\n")
+	if len(ma0) < 2 {
+		err = errors.New("Chromedriver: zip link not found\n")
 		return
 	}
-
-	err = downloadZip(url, "chromedriver_win32.zip")
+	url := fmt.Sprintf("https://chromedriver.storage.googleapis.com/%s/chromedriver_win32.zip", ma0[1])
+	req, err = http.NewRequest("GET", url, nil)
 	if err != nil {
 		return
 	}
-	err = extractFiles("chromedriver_win32.zip", filelist)
-	if err != nil {
-		return
-	}
-
-	_, err = testFileList(filelist)
+	req.Header.Set("Referer", u0)
 
 	return
 }
 
-func DownloadUBlock() (err error) {
-	file := []string{"extension/uBlock0.chromium/manifest.json"}
-	url := "https://github.com/gorhill/uBlock/releases/latest"
-	msg := "Chromeの拡張機能(uBlock Origin)を取得しています"
-
-	ok, _ := testFileList(file)
-	if ok {
-		return
-	}
-	fmt.Printf("%v\n", msg)
-
-	content, err := httpwrap.HttpGetText(url)
-	if err != nil {
-		return
-	}
-	re0 := regexp.MustCompile(`/(gorhill/uBlock/releases/download/[^'"]+/(uBlock0\.chromium\.zip))`)
-	ma0 := re0.FindStringSubmatch(content)
-
-	var url_zip string
-	if len(ma0) >= 3 {
-		url_zip = fmt.Sprintf("https://github.com/%s", ma0[1])
-	} else {
-		err = errors.New("DownloadUBlock: can't find latest file\n")
-		return
-	}
-
-	err = downloadZip(url_zip, "uBlock0.chromium.zip")
-	if err != nil {
-		return
-	}
-
-	err = Unzip(GetPath("uBlock0.chromium.zip"), GetPath("extension"))
-	if err != nil {
-		return
-	}
-
-	_, err = testFileList(file)
-
-	return
+////////////////////////////////////////////////////////////
+// PhantomJS: http://phantomjs.org/
+////////////////////////////////////////////////////////////
+var phantomjs = Tool{
+	Dir: "phantomjs",
+	Exe: "phantomjs",
+	GetReq: reqPhantomjs,
 }
+func GetPhantomjs() (exe string, err error) {
+	return getBin(phantomjs)
+}
+func reqPhantomjs() (req *http.Request, zipName string, err error) {
+	fmt.Printf("必要なツール(PhantomJS)を取得しています\n")
+	u0 := "http://phantomjs.org/download.html"
 
-func DownloadPhantomJs() (err error) {
-	file := []string{"phantomjs.exe"}
-	url := "http://phantomjs.org/download.html"
+	content, err := httpwrap.HttpGetText(u0)
+	if err != nil {
+		return
+	}
+
 	re := regexp.MustCompile(`(https?://[^\s"'><]+?/(phantomjs-[^/\s"'><]+?windows\.zip))`)
-	msg := "必要なツール(PhantomJs)を取得しています"
+	ma := re.FindStringSubmatch(content)
+	if len(ma) < 3 {
+		err = errors.New("PhantomJS: zip link not found\n")
+		return
+	}
+	url := ma[1]
+	zipName = ma[2]
+	req, err = http.NewRequest("GET", url, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Referer", u0)
 
-	err = downloadTool(file, url, re, msg)
 	return
 }
 
-func DownloadImageMagic() (err error) {
-	file := []string{"convert.exe", "magic.xml"}
-	url := "https://www.imagemagick.org/script/download.php"
+////////////////////////////////////////////////////////////
+// ImageMagick: https://www.imagemagick.org/script/index.php
+////////////////////////////////////////////////////////////
+var convert = Tool{
+	Dir: "imagemagick",
+	Exe: "convert",
+	GetReq: reqImageMagick,
+}
+func GetConvert() (exe string, err error) {
+	return getBin(convert)
+}
+func reqImageMagick() (req *http.Request, zipName string, err error) {
+	fmt.Printf("必要なツール(ImageMagick)を取得しています\n")
+	u0 := "https://www.imagemagick.org/script/download.php"
+
+	content, err := httpwrap.HttpGetText(u0)
+	if err != nil {
+		return
+	}
+
 	re := regexp.MustCompile(`(https?://(?:.*?\.)*imagemagick\.org/.*?([^/]*?-portable-Q16-x86\.zip))`)
-	msg := "必要なツール(ImageMagic)を取得しています"
+	ma := re.FindStringSubmatch(content)
+	if len(ma) < 3 {
+		err = errors.New("ImageMagick: zip link not found\n")
+		return
+	}
+	url := ma[1]
+	zipName = ma[2]
+	req, err = http.NewRequest("GET", url, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Referer", u0)
 
-	err = downloadTool(file, url, re, msg)
 	return
 }
 
-func testFileList(filelist []string) (ok bool, err error) {
 
-	var nfound int
-	for i := 0; i < len(filelist); i++ {
-		_, err = os.Stat(GetPath(filelist[i]))
-		if err != nil {
+////////////////////////////////////////////////////////////
+// 7za: https://www.7-zip.org/
+////////////////////////////////////////////////////////////
+var sevenza = Tool{
+	Dir: "7za",
+	Exe: "7za",
+	GetReq: req7za,
+}
+func Get7za() (exe string, err error) {
+	return getBin(sevenza)
+}
+func req7za() (req *http.Request, zipName string, err error) {
+	fmt.Printf("必要なツール(7za)を取得しています\n")
+
+	zipName = "7za920.zip"
+	u0 := "https://osdn.net/projects/sevenzip/downloads/64455/7za920.zip/"
+
+	content, err := httpwrap.HttpGetText(u0)
+	if err != nil {
+		return
+	}
+	re := regexp.MustCompile(`/(frs/redir\.php\?[^"'\s>]+)`)
+	m := re.FindStringSubmatch(content)
+	if len(m) < 2 {
+		err = fmt.Errorf("7za: zip link not found")
+		return
+	}
+
+	url := fmt.Sprintf(`https://osdn.net/%s`, m[1])
+	url = strings.Replace(url,"&amp;", "&", -1)
+	req, err = http.NewRequest("GET", url, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Referer", u0)
+	return
+}
+
+////////////////////////////////////////////////////////////
+// uBlock Origin: https://github.com/gorhill/uBlock/
+////////////////////////////////////////////////////////////
+var ublock0 = Tool{
+	Dir: "extension/uBlock0.chromium",
+	Exe: "extension/uBlock0.chromium/",
+	GetReq: reqUblock0,
+}
+func GetUblock0() (exe string, err error) {
+	return getBin(ublock0)
+}
+func reqUblock0() (req *http.Request, zipName string, err error) {
+	fmt.Printf("Chromeの拡張機能(uBlock Origin)を取得しています\n")
+
+	u0 := "https://github.com/gorhill/uBlock/releases/latest"
+
+	content, err := httpwrap.HttpGetText(u0)
+	if err != nil {
+		return
+	}
+	re := regexp.MustCompile(`/(gorhill/uBlock/releases/download/[^'"]+/(uBlock0\.chromium\.zip))`)
+	ma := re.FindStringSubmatch(content)
+
+	if len(ma) < 3 {
+		err = fmt.Errorf("uBlock Origin: zip link not found")
+		return
+	}
+
+	url := fmt.Sprintf("https://github.com/%s", ma[1])
+	zipName = ma[2]
+
+	req, err = http.NewRequest("GET", url, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Referer", u0)
+
+	return
+}
+
+func findBin(dirName, binName string) (exe string, err error) {
+	var testList []string
+
+	dir0 := getPath(dirName)
+	fmts0 := []string{`%s/%s`, `%s/%s.exe`, `%s/bin/%s`, `%s/bin/%s.exe`}
+	for _, f := range fmts0 {
+		testList = append(testList, fmt.Sprintf(f, dir0, binName))
+	}
+
+	dir1 := getPath("")
+	fmts1 := []string{`%s/%s`, `%s/%s.exe`, `%s/bin/%s`, `%s/bin/%s.exe`}
+	for _, f := range fmts1 {
+		testList = append(testList, fmt.Sprintf(f, dir1, binName))
+	}
+
+	for _, test := range testList {
+		//fmt.Printf("debug test bin: %s\n", test)
+		if testFile(test) {
+			exe = test
 			return
-		} else {
-			nfound++
 		}
 	}
-	if len(filelist) == nfound {
-		ok = true
+	err = fmt.Errorf(`Can't find %s`, binName)
+	return
+}
+// find exe path or download binary
+func getBin(tool Tool) (exe string, err error) {
+	for i := 0; i <= 1; i++ {
+		exe, err = findBin(tool.Dir, tool.Exe);
+		if err == nil {
+			return
+		}
+		if i > 0 {
+			err = fmt.Errorf("Not found excutable: %s", tool.Exe)
+			return
+		}
+
+		req, zipName, e := tool.GetReq()
+		if e != nil {
+			err = e
+			return
+		}
+		if strings.Compare(zipName, "") == 0 {
+			err = fmt.Errorf("[FIXME] zip name not specified")
+			return
+		}
+		err = downloadZip(req, zipName)
+		if err != nil {
+			return
+		}
+		err = unzip(getPath(zipName), getPath(tool.Dir), true)
+		if err != nil {
+			return
+		}
 	}
 	return
 }
 
-func downloadZip(url, filename string) (err error) {
-	path := GetPath(filename)
-	out, err := os.Create(path)
-	if err != nil {
-		return
+func downloadZip(req *http.Request, filename string) (err error) {
+
+	client := &http.Client{
+		Timeout: time.Duration(600) * time.Second,
 	}
-	defer out.Close()
-	timeout := http.DefaultClient.Timeout
-	defer func() {http.DefaultClient.Timeout = timeout}()
-	http.DefaultClient.Timeout = time.Duration(600) * time.Second
-	resp, err := http.Get(url)
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("downloading %s\n", url)
+	path := getPath(filename)
+	out, err := os.Create(path)
+	if err != nil {
+		return
+	}
+	defer out.Close()
+
+	fmt.Printf("Downloading %v\n", req.URL)
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return
 	}
-	fmt.Printf("saved: %s\n", path)
+	fmt.Printf("Saved: %s\n", path)
 	return
 }
 
-func extractFiles(filename string, filelist []string) (err error) {
-	r, err := zip.OpenReader(GetPath(filename))
+func testFile(name string) (bool) {
+	_, err := os.Stat(name)
 	if err != nil {
-		return
+		return false
 	}
-	defer r.Close()
-
-	for _, f := range r.File {
-		base := filepath.Base(f.Name)
-		//fmt.Printf("%v %v\n", base, f.Name)
-		var found bool
-		for j := 0; j < len(filelist); j++ {
-			if base == filelist[j] {
-				found = true
-			}
-		}
-		if found {
-			rc, e := f.Open();
-			if e != nil {
-				err = e
-				return
-			}
-			buf := make([]byte, f.UncompressedSize)
-			if _, e := io.ReadFull(rc, buf); e != nil {
-				err = e
-				return
-			}
-
-			if e := ioutil.WriteFile(GetPath(base), buf, f.Mode()); e != nil {
-				err = e
-				return
-			}
-		}
-	}
-
-	return
-}
-
-func downloadTool(filelist []string, url string, re *regexp.Regexp, msg string) (err error) {
-	ok, _ := testFileList(filelist)
-	if ok {
-		return
-	}
-
-	fmt.Printf("%v\n", msg)
-
-	content, err := httpwrap.HttpGetText(url)
-	if err != nil {
-		return
-	}
-
-	m := re.FindStringSubmatch(content)
-	if len(m) < 3 {
-		fmt.Printf("%v\n", m)
-		return
-	}
-
-	zipurl := m[1]
-	zipname := m[2]
-	err = downloadZip(zipurl, zipname)
-	if err != nil {
-		return
-	}
-	err = extractFiles(zipname, filelist)
-	if err != nil {
-		return
-	}
-
-	_, err = testFileList(filelist)
-
-	return
+	return true
 }

@@ -1,6 +1,7 @@
 // 180302 created
 // 180306 add extension/uBlock0
 // 180312 add base64 error case
+// 180315 update tools
 
 package mmdl
 
@@ -19,7 +20,11 @@ import (
 )
 
 func openDriver() (driver *agouti.WebDriver, err error) {
-	dir, err := filepath.Abs(tools.GetPath(`extension/uBlock0.chromium/`))
+	path, err := tools.GetUblock0()
+	if err != nil {
+		return
+	}
+	dir, err := filepath.Abs(path)
 	if err != nil {
 		return
 	}
@@ -31,7 +36,11 @@ func openDriver() (driver *agouti.WebDriver, err error) {
 	opt := agouti.Timeout(3)
 	opt_c := agouti.ChromeOptions("args", args)
 
-	cmd := []string{tools.GetPath("chromedriver"), "--port={{.Port}}"}
+	exe, err := tools.GetChromedriver()
+	if err != nil {
+		return
+	}
+	cmd := []string{exe, "--port={{.Port}}"}
 	driver = agouti.NewWebDriver("http://{{.Address}}", cmd, opt, opt_c)
 
 	err = driver.Start()

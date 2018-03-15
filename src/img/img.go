@@ -1,6 +1,7 @@
 // 180228 created
 // 180306 add os.Remove splitted pages
 // 180310 remove javascript code
+// 180315 update tools
 
 package img
 
@@ -97,12 +98,21 @@ func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool,
 }
 
 func splittedPage(root string, id int, pageurl string) (filename string, err error) {
+	exeJs, err := tools.GetPhantomjs()
+	if err != nil {
+		return
+	}
+
+	exeCv, err := tools.GetConvert()
+	if err != nil {
+		return
+	}
 
 	fmt.Printf("ファイアウォールのメッセージが出る場合、")
 	fmt.Printf("キャンセル（不許可）を選んでも問題ありません\n")
 
 	opt := agouti.Timeout(3)
-	cmd := []string{tools.GetPath("phantomjs"), "--webdriver={{.Address}}", "--ignore-ssl-errors=true"}
+	cmd := []string{exeJs, "--webdriver={{.Address}}", "--ignore-ssl-errors=true"}
 	//cmd := []string{tools.GetPath("chromedriver"), "--port={{.Port}}"}
 
 	driver := agouti.NewWebDriver("http://{{.Address}}", cmd, opt)
@@ -160,7 +170,7 @@ func splittedPage(root string, id int, pageurl string) (filename string, err err
 
 		// join horizonally
 		cmd_horiz := exec.Cmd{
-			Path: tools.GetPath("convert"),
+			Path: exeCv,
 		}
 		cmd_horiz.Args = append(cmd_horiz.Args, cmd_horiz.Path)
 		cmd_horiz.Args = append(cmd_horiz.Args, "+append")
@@ -190,7 +200,7 @@ func splittedPage(root string, id int, pageurl string) (filename string, err err
 
 	// join vertically
 	cmd_vert := exec.Cmd{
-		Path: tools.GetPath("convert"),
+		Path: exeCv,
 	}
 	cmd_vert.Args = append(cmd_vert.Args, cmd_vert.Path)
 	cmd_vert.Args = append(cmd_vert.Args, "-append")

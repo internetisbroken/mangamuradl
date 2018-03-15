@@ -1,5 +1,6 @@
 // 180228 created
 // 180314 add convert option(-density 75 -geometry 100%)
+// 180315 update tools
 
 package img
 
@@ -13,7 +14,7 @@ import (
 
 func CreatePdf(imgroot, pdfpath string, db *sql.DB) (err error) {
 
-	err = tools.DownloadImageMagic()
+	exe, err := tools.GetConvert()
 	if err != nil {
 		return
 	}
@@ -28,7 +29,7 @@ func CreatePdf(imgroot, pdfpath string, db *sql.DB) (err error) {
 
 
 	command := exec.Cmd{
-		Path: tools.GetPath("convert"),
+		Path: exe,
 	}
 	command.Args = append(command.Args, command.Path)
 

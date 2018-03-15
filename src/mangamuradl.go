@@ -137,21 +137,10 @@ func mkdir(dir string) bool {
 }
 
 func main() {
+	var err error
 	fmt.Printf("version %s\n", VERSION)
 
 	Setup()
-	var err error
-
-	err = tools.DownloadChromedriver()
-	if err != nil {
-		fmt.Printf("%v\n", err)
-		return
-	}
-	err = tools.DownloadUBlock()
-	if err != nil {
-		fmt.Printf("%v\n", err)
-		return
-	}
 
 	pageId, err := argparse()
 	if err != nil {
@@ -198,20 +187,20 @@ func main() {
 		return
 	}
 
-
+	// Get Image url list
 	title, err := mmdl.Mmdl(pageId, db)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
 	}
 
-	err = tools.DownloadImageMagic()
+	_, err = tools.GetConvert()
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
 	}
 
-	err = tools.DownloadPhantomJs()
+	_, err = tools.GetPhantomjs()
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
