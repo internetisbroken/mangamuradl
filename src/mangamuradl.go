@@ -13,6 +13,9 @@
 // v2.0.2(180306) uBlock Originを使うようにした
 // v2.0.3(180310) zip作成機能追加
 // v2.0.4(180312) fix: base64 error case
+// v2.0.5(180315) fix create zip/pdf
+//
+// 上げたらvar VERSIONを更新すること
 
 package main
 
@@ -35,7 +38,7 @@ import (
 	"./conf"
 )
 
-var VERSION = "v2.0.4(180312)"
+var VERSION = "v2.0.5(180315)"
 
 func help() {
 	fmt.Printf(`
@@ -136,6 +139,32 @@ func mkdir(dir string) bool {
 	return true
 }
 
+func createTable(db *sql.DB) (err error) {
+	_, err = db.Exec(`
+		create table if not exists page (
+			id          integer  primary key autoincrement not null,
+			path        text     not null,
+			pagenum     integer  not null unique,
+			req_status  integer  not null default 0,
+			url         text     not null default "",
+			is_frame    integer  not null default 0,
+			is_blob     integer  not null default 0,
+			blob_b64    text     not null default ""
+		)`)
+	if err != nil {
+		return
+	}
+
+	_, err = db.Exec(`
+		create table if not exists pageinfo (
+			title        text    not null
+		)`)
+	if err != nil {
+		return
+	}
+	return
+}
+
 func main() {
 	var err error
 	fmt.Printf("version %s\n", VERSION)
@@ -162,28 +191,9 @@ func main() {
 	}
 	defer db.Close()
 
-	_, err = db.Exec(`
-		create table if not exists page (
-			id          integer  primary key autoincrement not null,
-			path        text     not null,
-			pagenum     integer  not null unique,
-			req_status  integer  not null default 0,
-			url         text     not null default "",
-			is_frame    integer  not null default 0,
-			is_blob     integer  not null default 0,
-			blob_b64    text     not null default ""
-		)`)
+	err = createTable(db)
 	if err != nil {
-		fmt.Printf("%v\n", err)
-		return
-	}
-
-	_, err = db.Exec(`
-		create table if not exists pageinfo (
-			title        text    not null
-		)`)
-	if err != nil {
-		fmt.Printf("%v\n", err)
+		fmt.Printf("createTable: %v\n", err)
 		return
 	}
 

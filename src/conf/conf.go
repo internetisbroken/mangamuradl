@@ -1,4 +1,5 @@
 // 180228 created
+// 180315 change default pdf(off)/zip(on)
 
 package conf
 
@@ -22,9 +23,12 @@ func SetCookie(val string) (err error) {
 // PDf
 func IsPdf() (bool) {
 	val, _ := getIni(inifile, pdf_key)
-	// default: true
-	if val == "1" || val == "" {
+	if val == "1" {
 		return true
+	}
+	// default: false
+	if val == "" {
+		return false
 	}
 	return false
 }
@@ -38,8 +42,11 @@ func SetPdf(val bool) (err error) {
 // Zip
 func IsZip() (bool) {
 	val, _ := getIni(inifile, zip_key)
-	// default: false
 	if val == "1" {
+		return true
+	}
+	// default: true
+	if val == "" {
 		return true
 	}
 	return false

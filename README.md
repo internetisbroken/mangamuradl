@@ -1,11 +1,13 @@
 # mangamuradl
 mangamuradl - 最も手軽な漫画村ダウンロードツール
 
-## ダウンロード
+## ダウンロードと更新内容
 
 windows(x64)ビルドは以下のリリースページの mangamuradl.zip から取得可能
 
 https://github.com/internetisbroken/mangamuradl/releases
+
+更新内容は上記URLに記載
 
 ## 対応一覧
 - ページ画像の取得
@@ -75,11 +77,11 @@ Powershellかコマンドプロンプト等で
 ### コマンドラインオプション
 
 ```
--h --help    ヘルプを表示
--p --pdf     PDF作成機能をオンに設定(初期値)*
--P --no-pdf  PDF作成機能をオフに設定*
--z --zip     ZIP作成機能をオンに設定*
--Z --no-zip  ZIP作成機能をオフに設定(初期値)*
+-h または --help    ヘルプを表示
+-p または --pdf     PDF作成機能をオンに設定*
+-P または --no-pdf  PDF作成機能をオフに設定(初期値)*
+-z または --zip     ZIP作成機能をオンに設定(初期値)*
+-Z または --no-zip  ZIP作成機能をオフに設定*
 
 * 設定はiniファイルに保持される。
 ```
@@ -90,10 +92,11 @@ Powershellかコマンドプロンプト等で
 
 必要なプログラムは初回起動時に自動的にダウンロードして解凍される。
 
-- convert (ImageMagic): pdf作成および分割ページの処理に必要
+- convert (ImageMagick): pdf作成および分割ページの処理に必要
 - phantomjs: 分割ページの処理に必要
 - chromedriver, Chrome: ページリスト取得と認証ページの操作に必要
 - uBlock Origin: Chrome起動時、広告等の遮断を行う
+- 7za(7-Zip): zip作成に使用
 
 ## トラブルシュート
 
