@@ -14,6 +14,7 @@
 // v2.0.3(180310) zip作成機能追加
 // v2.0.4(180312) fix: base64 error case
 // v2.0.5(180315) fix create zip/pdf
+// v2.0.6(180316) support webp
 //
 // 上げたらvar VERSIONを更新すること
 
@@ -39,7 +40,7 @@ import (
 	"./conf"
 )
 
-var VERSION = "v2.0.5(180315)"
+var VERSION = "v2.0.6(180316)"
 
 func help() {
 	fmt.Printf(`

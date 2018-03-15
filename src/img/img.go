@@ -3,6 +3,7 @@
 // 180310 remove javascript code
 // 180315 update tools
 // 180315 add DownloadFrameImage
+// 180316 add webp support
 
 package img
 
@@ -20,6 +21,7 @@ import (
 )
 
 var jpg = ".jpg"
+var webp = ".webp"
 
 func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool, base64str string) (err error) {
 
@@ -69,6 +71,20 @@ func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool,
 			var postfix string
 			if 0xff == content[0] && 0xd8 == content[1] {
 				postfix = jpg
+
+			} else if (
+				// RIFF
+				0x52 == content[0] &&
+				0x49 == content[1] &&
+				0x46 == content[2] &&
+				0x46 == content[3]) || (
+				// WEBP
+				0x57 == content[0] &&
+				0x45 == content[1] &&
+				0x42 == content[2] &&
+				0x50 == content[3] ) {
+				postfix = webp
+
 			} else {
 				errstr := fmt.Sprintf("Unknown format: %d(%s), header is %x %x %x %x\n",
 					pagenum, url, content[0], content[1], content[2], content[3])
@@ -205,7 +221,7 @@ func DownloadFrameImage(root string, pagenum int, url string, page *agouti.Page)
 
 func FindImageByNumber(root string, num int) (exist bool, filename string) {
 
-	testpostfix := []string{jpg, ""}
+	testpostfix := []string{jpg, webp, ""}
 	fileformat := []string{"%s/%d%s", "%s/%02d%s", "%s/%03d%s", "%s/%04d%s", "%s/%05d%s"}
 	for i := 0; i < len(testpostfix); i++ {
 		for j := 0; j < len(fileformat); j++ {

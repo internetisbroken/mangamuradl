@@ -1,5 +1,6 @@
 // 180310 created
 // 180315 changed go archive/zip to 7za
+// 180316 support webp
 
 package img
 
@@ -7,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"errors"
+	"strings"
 	"database/sql"
 	"../tools"
 )
@@ -50,8 +52,32 @@ func CreateZip(imgroot, zippath string, db *sql.DB) (err error) {
 		ex, file := FindImageByNumber(imgroot, pagenum)
 		if ex {
 			count++
-			// [<file_names>...]
-			command.Args = append(command.Args, file)
+			if strings.HasSuffix(file, ".webp") {
+				// convert webp to jpg
+				jpgfile := strings.TrimSuffix(file, ".webp") + ".jpg"
+				cvt, e := tools.GetConvert()
+				if e != nil {
+					err = e
+					return
+				}
+				fmt.Printf("Converting: %s -> %s\n", file, jpgfile)
+				cmd := exec.Cmd{Path: cvt}
+				cmd.Args = append(cmd.Args, cmd.Path)
+				cmd.Args = append(cmd.Args, file)
+				cmd.Args = append(cmd.Args, jpgfile)
+				_, err = cmd.Output()
+				if err != nil {
+					return
+				}
+
+				// [<file_names>...]
+				command.Args = append(command.Args, jpgfile)
+			} else {
+				// jpg
+				// [<file_names>...]
+				command.Args = append(command.Args, file)
+			}
+
 		} else{
 			msg := fmt.Sprintf("Not found: %s/%d.jpg", imgroot, pagenum)
 			err = errors.New(msg)

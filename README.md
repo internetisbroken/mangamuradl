@@ -14,6 +14,7 @@ https://github.com/internetisbroken/mangamuradl/releases
     - jpg単独のページ
     - 分割されたページ(自動で結合される)
     - base64形式でエンコードされたページ(自動でデコードされる)
+    - webp形式のページ
 - ユーザがreCAPTCHAの操作を行うことで全ページの取得が可能
 - PDF作成機能
 - ZIP作成機能
