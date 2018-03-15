@@ -2,6 +2,7 @@
 // 180306 add os.Remove splitted pages
 // 180310 remove javascript code
 // 180315 update tools
+// 180315 add DownloadFrameImage
 
 package img
 
@@ -22,7 +23,7 @@ var jpg = ".jpg"
 
 func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool, base64str string) (err error) {
 
-	exists, testname := findImageByNumber(root, pagenum)
+	exists, testname := FindImageByNumber(root, pagenum)
 	if exists {
 		if testname == "" {
 			//fmt.Printf("Skip: %s\n", testname)
@@ -32,10 +33,9 @@ func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool,
 
 	var filename string
 	if is_frame {
-		filename, err = splittedPage(root, pagenum, url)
-		if err != nil {
-			return
-		}
+		fmt.Printf("Skip: page[%d](frame)\n", pagenum)
+		return
+
 	} else {
 		var content []byte
 		if is_blob {
@@ -97,40 +97,12 @@ func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool,
 	return
 }
 
-func splittedPage(root string, id int, pageurl string) (filename string, err error) {
-	exeJs, err := tools.GetPhantomjs()
-	if err != nil {
-		return
-	}
-
-	exeCv, err := tools.GetConvert()
-	if err != nil {
-		return
-	}
-
-	fmt.Printf("ファイアウォールのメッセージが出る場合、")
-	fmt.Printf("キャンセル（不許可）を選んでも問題ありません\n")
-
-	opt := agouti.Timeout(3)
-	cmd := []string{exeJs, "--webdriver={{.Address}}", "--ignore-ssl-errors=true"}
-	//cmd := []string{tools.GetPath("chromedriver"), "--port={{.Port}}"}
-
-	driver := agouti.NewWebDriver("http://{{.Address}}", cmd, opt)
-
-	if err = driver.Start(); err != nil {
-		return
-	}
-	defer driver.Stop()
-
-    page, err := driver.NewPage()
-    if err != nil {
-		return
-    }
+func DownloadFrameImage(root string, pagenum int, url string, page *agouti.Page) (filename string, err error) {
 	err = page.SetImplicitWait(1000); if err != nil { return }
 	err = page.SetPageLoad(60000); if err != nil { return }
 	err = page.SetScriptTimeout(1000); if err != nil { return }
 
-	if err = page.Navigate(pageurl); err != nil {
+	if err = page.Navigate(url); err != nil {
 		return
 	}
 
@@ -153,6 +125,11 @@ func splittedPage(root string, id int, pageurl string) (filename string, err err
 			fmt.Printf("%v", res)
 			err = fmt.Errorf("typeof res is not []interface {}, %v", t)
 			return
+	}
+
+	exeCv, err := tools.GetConvert()
+	if err != nil {
+		return
 	}
 
 	var file_lines []string
@@ -188,7 +165,7 @@ func splittedPage(root string, id int, pageurl string) (filename string, err err
 			cmd_horiz.Args = append(cmd_horiz.Args, url)
 		}
 
-		file_horiz := fmt.Sprintf("%s/%d-%d.jpg", root, id, i)
+		file_horiz := fmt.Sprintf("%s/%d-%d.jpg", root, pagenum, i)
 		cmd_horiz.Args = append(cmd_horiz.Args, file_horiz)
 
 		_, err = cmd_horiz.Output()
@@ -207,7 +184,7 @@ func splittedPage(root string, id int, pageurl string) (filename string, err err
 	for _, file := range file_lines {
 		cmd_vert.Args = append(cmd_vert.Args, file)
 	}
-	filename = fmt.Sprintf("%s/%d.jpg", root, id)
+	filename = fmt.Sprintf("%s/%d.jpg", root, pagenum)
 	cmd_vert.Args = append(cmd_vert.Args, filename)
 	_, err = cmd_vert.Output()
 	if (err != nil) {
@@ -221,10 +198,12 @@ func splittedPage(root string, id int, pageurl string) (filename string, err err
 		cmd_vert.Args = append(cmd_vert.Args, file)
 	}
 
+	fmt.Printf("Saved: %s\n", filename)
+
 	return
 }
 
-func findImageByNumber(root string, num int) (exist bool, filename string) {
+func FindImageByNumber(root string, num int) (exist bool, filename string) {
 
 	testpostfix := []string{jpg, ""}
 	fileformat := []string{"%s/%d%s", "%s/%02d%s", "%s/%03d%s", "%s/%04d%s", "%s/%05d%s"}

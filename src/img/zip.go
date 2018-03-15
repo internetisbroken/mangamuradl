@@ -47,7 +47,7 @@ func CreateZip(imgroot, zippath string, db *sql.DB) (err error) {
 			return
 		}
 
-		ex, file := findImageByNumber(imgroot, pagenum)
+		ex, file := FindImageByNumber(imgroot, pagenum)
 		if ex {
 			count++
 			// [<file_names>...]

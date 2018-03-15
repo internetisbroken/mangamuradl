@@ -42,7 +42,7 @@ func CreatePdf(imgroot, pdfpath string, db *sql.DB) (err error) {
 			return
 		}
 
-		ex, file := findImageByNumber(imgroot, pagenum)
+		ex, file := FindImageByNumber(imgroot, pagenum)
 		if ex {
 			count++
 			command.Args = append(command.Args, file)

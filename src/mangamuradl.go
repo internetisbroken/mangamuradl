@@ -32,6 +32,7 @@ import (
 	"sync"
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/sclevine/agouti"
 	"./tools"
 	"./mmdl"
 	"./img"
@@ -139,7 +140,29 @@ func mkdir(dir string) bool {
 	return true
 }
 
+var dbVersion = "180316"
+func checkTable(db *sql.DB) (ok bool) {
+
+	stmt, err := db.Prepare("select v from kv where k = ?")
+	if err != nil {
+		return
+	}
+	defer stmt.Close()
+	var version string
+	err = stmt.QueryRow("DB_VERSION").Scan(&version)
+	if err != nil {
+		return
+	}
+
+	if version != "" && version == dbVersion {
+		ok = true
+	}
+
+	return
+}
+
 func createTable(db *sql.DB) (err error) {
+
 	_, err = db.Exec(`
 		create table if not exists page (
 			id          integer  primary key autoincrement not null,
@@ -156,12 +179,25 @@ func createTable(db *sql.DB) (err error) {
 	}
 
 	_, err = db.Exec(`
-		create table if not exists pageinfo (
-			title        text    not null
+		create table if not exists kv (
+			k  text  not null unique,
+			v  text  not null
 		)`)
 	if err != nil {
 		return
 	}
+
+	stmt, err := db.Prepare("insert or ignore into kv(k, v) values(?, ?)")
+	if err != nil {
+		return
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec("DB_VERSION", dbVersion)
+	if err != nil {
+		return
+	}
+
 	return
 }
 
@@ -184,16 +220,30 @@ func main() {
 	}
 
 	dbfile := fmt.Sprintf("%s/%s.sqlite3", dbroot, pageId)
-	db, err := sql.Open("sqlite3", dbfile)
+	var db *sql.DB
+	db, err = sql.Open("sqlite3", dbfile)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
+	}
+	if (! checkTable(db)) {
+		db.Close()
+		fmt.Printf("Deleting old database: %s\n", dbfile)
+		err = os.Remove(dbfile)
+		if err != nil {
+			fmt.Printf("%v\nPlease delete %s manually\n", err, dbfile)
+			return
+		}
+		db, err = sql.Open("sqlite3", dbfile)
+		if err != nil {
+			fmt.Printf("%v\n", err)
+			return
+		}
 	}
 	defer db.Close()
 
 	err = createTable(db)
 	if err != nil {
-		fmt.Printf("createTable: %v\n", err)
 		return
 	}
 
@@ -218,52 +268,113 @@ func main() {
 
 	imgdir := "./img"
 	if !mkdir(imgdir) {
+		fmt.Printf("mkdir: Can't create %s\n", imgdir)
 		return
 	}
 	imgroot := fmt.Sprintf("%s/%s", imgdir, title)
 	if !mkdir(imgroot) {
+		fmt.Printf("mkdir: Can't create %s\n", imgroot)
 		return
 	}
 
-	rows, err := db.Query("select pagenum, url, is_frame, is_blob, blob_b64 from page where req_status == 2 order by pagenum")
+	// Non-frame
+	err = func() (err error) {
+		rows, err := db.Query(
+			"select pagenum, url, is_blob, blob_b64 from page where req_status == 2 and is_frame <> 1 order by pagenum")
+		if err != nil {
+			return
+		}
+		defer rows.Close()
+
+		wait := new(sync.WaitGroup)
+		i := 0
+		for rows.Next() {
+			var pagenum int
+			var url string
+			var is_blob int
+			var blob_b64 string
+			err = rows.Scan(&pagenum, &url, &is_blob, &blob_b64)
+			if err != nil {
+				return
+			}
+
+			wait.Add(1)
+			go func(root string, pagenum int, url string, is_blob bool, base64str string) {
+				err := img.DownloadImage(root, pagenum, url, false, is_blob, base64str)
+				if err != nil {
+					fmt.Printf("%v\n", err)
+				}
+				wait.Done()
+			}(imgroot, pagenum, url, is_blob != 0, blob_b64)
+
+			i++
+			if i % 8 == 7 {
+				wait.Wait()
+			}
+		}
+		wait.Wait()
+
+		err = rows.Err()
+		if err != nil {
+			return
+		}
+		return
+	}()
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
 	}
-	defer rows.Close()
 
-	wait := new(sync.WaitGroup)
-	i := 0
-	for rows.Next() {
-		var pagenum int
-		var url string
-		var is_frame int
-		var is_blob int
-		var blob_b64 string
-		err = rows.Scan(&pagenum, &url, &is_frame, &is_blob, &blob_b64)
+	// framed page
+	err = func() (err error) {
+		rows, err := db.Query(
+			"select pagenum, url, is_frame from page where req_status == 2 and is_frame == 1 order by pagenum")
 		if err != nil {
-			fmt.Printf("%v\n", err)
 			return
 		}
+		defer rows.Close()
 
-		wait.Add(1)
-		go func(root string, pagenum int, url string, is_frame, is_blob bool, base64str string) {
-			err := img.DownloadImage(root, pagenum, url, is_frame, is_blob, base64str)
+		var opened bool
+		var driver *agouti.WebDriver
+		var page *agouti.Page
+		for rows.Next() {
+			var pagenum int
+			var url string
+			var is_frame int
+			err = rows.Scan(&pagenum, &url, &is_frame)
 			if err != nil {
-				fmt.Printf("%v\n", err)
+				return
 			}
-			wait.Done()
-		}(imgroot, pagenum, url, is_frame != 0, is_blob != 0, blob_b64)
 
-		i++
-		if i % 8 == 7 {
-			wait.Wait()
+			if ex, _ := img.FindImageByNumber(imgroot, pagenum); ex == false {
+				// download if not saved
+				if (! opened) {
+					opened = true
+					// start browser
+					//driver, page, err = tools.StartChrome()
+					driver, page, err = tools.StartPhantomjs()
+					if err != nil {
+						return
+					}
+					defer driver.Stop()
+				}
+
+				_, e := img.DownloadFrameImage(imgroot, pagenum, url, page)
+				if e != nil {
+					err = e
+					return
+				}
+			}
 		}
-	}
-	wait.Wait()
 
-	err = rows.Err()
+		err = rows.Err()
+		if err != nil {
+			return
+		}
+		return
+	}()
 	if err != nil {
+		fmt.Printf("%v\n", err)
 		return
 	}
 

@@ -1,6 +1,8 @@
 // 180228 created
 // 180306 add DownloadUBlock()
 // 180315 add 7za
+// 180315 add startBrowser
+
 package tools
 
 import (
@@ -14,6 +16,8 @@ import (
 	"time"
 	"path"
 	"strings"
+	"path/filepath"
+	"github.com/sclevine/agouti"
 )
 
 var toolDir = "tool/"
@@ -37,6 +41,74 @@ func getPath(name string) string {
 	return path.Clean(fmt.Sprintf("%s/%s", toolDir, name))
 }
 
+func StartChrome() (*agouti.WebDriver, *agouti.Page, error) {
+	return startBrowser(true)
+}
+func StartPhantomjs() (*agouti.WebDriver, *agouti.Page, error) {
+	return startBrowser(false)
+}
+func startBrowser(isChrome bool) (driver *agouti.WebDriver, page *agouti.Page, err error) {
+
+	opt := agouti.Timeout(15)
+
+	if isChrome {
+		exe, e := GetChromedriver()
+		if e != nil {
+			err = e
+			return
+		}
+
+		// extension
+		path, e := GetUblock0()
+		if e != nil {
+			err = e
+			return
+		}
+		dir, e := filepath.Abs(path)
+		if e != nil {
+			err = e
+			return
+		}
+		// chrome option
+		args := []string{
+			fmt.Sprintf(`load-extension=%s`, dir),
+			"enable-automation",
+			//"headless",
+		}
+		opt_c := agouti.ChromeOptions("args", args)
+
+		cmd := []string{exe, "--port={{.Port}}"}
+		driver = agouti.NewWebDriver("http://{{.Address}}", cmd, opt, opt_c)
+
+	} else {
+		exe, e := GetPhantomjs()
+		if e != nil {
+			err = e
+			return
+		}
+
+		cmd := []string{exe, "--webdriver={{.Address}}", "--ignore-ssl-errors=true"}
+		driver = agouti.NewWebDriver("http://{{.Address}}", cmd, opt)
+	}
+
+	fmt.Printf("ファイアウォールのメッセージが出る場合、")
+	fmt.Printf("キャンセル（不許可）を選んでも問題ありません\n")
+
+	if err = driver.Start(); err != nil {
+		return
+	}
+
+	page, err = driver.NewPage()
+	if err != nil {
+		driver.Stop()
+		return
+	}
+	err = page.SetImplicitWait(1000); if err != nil { return }
+	err = page.SetPageLoad(15000); if err != nil { return }
+	err = page.SetScriptTimeout(15000); if err != nil { return }
+
+	return
+}
 
 ////////////////////////////////////////////////////////////
 // Chromedriver: https://sites.google.com/a/chromium.org/chromedriver/home
