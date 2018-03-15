@@ -1,19 +1,24 @@
 // 180310 created
+// 180315 changed go archive/zip to 7za
 
 package img
 
 import (
 	"fmt"
-	"os"
-	"io"
-	"regexp"
-	"archive/zip"
+	"os/exec"
 	"errors"
 	"database/sql"
+	"../tools"
 )
 
-func tryCreateZip(imgroot string, wrzip *zip.Writer, db *sql.DB) (count int, err error) {
+func CreateZip(imgroot, zippath string, db *sql.DB) (err error) {
 
+	exe, err := tools.Get7za()
+	if err != nil {
+		return
+	}
+
+	// index: pagenum
 	rows, err := db.Query("select pagenum from page order by pagenum")
 	if err != nil {
 		fmt.Printf("CreateZip: %v\n", err)
@@ -21,6 +26,19 @@ func tryCreateZip(imgroot string, wrzip *zip.Writer, db *sql.DB) (count int, err
 	}
 	defer rows.Close()
 
+	//Usage: 7za <command> [<switches>...] <archive_name> [<file_names>...] [<@listfiles...>]
+	command := exec.Cmd{
+		Path: exe,
+	}
+	command.Args = append(command.Args, command.Path)
+
+	// <command> a: Add files to archive
+	command.Args = append(command.Args, "a")
+
+	// <archive_name>
+	command.Args = append(command.Args, zippath)
+
+	var count int
 	for rows.Next() {
 		var pagenum int
 		err = rows.Scan(&pagenum)
@@ -32,32 +50,8 @@ func tryCreateZip(imgroot string, wrzip *zip.Writer, db *sql.DB) (count int, err
 		ex, file := findImageByNumber(imgroot, pagenum)
 		if ex {
 			count++
-
-			re := regexp.MustCompile(`[\\/]([^\\/]+)$`)
-			m := re.FindStringSubmatch("./" + file)
-			if len(m) < 2 {
-				err = fmt.Errorf("Can't find basename: file")
-				return
-			}
-
-			wr, e := wrzip.Create("img/" + m[1])
-			if err != nil {
-				err = e
-				return
-			}
-
-			fp, e := os.Open(file)
-			if e != nil {
-				err = e
-				return
-			}
-			_, e = io.Copy(wr, fp)
-			fp.Close()
-			if e != nil {
-				err = e
-				return
-			}
-
+			// [<file_names>...]
+			command.Args = append(command.Args, file)
 		} else{
 			msg := fmt.Sprintf("Not found: %s/%d.jpg", imgroot, pagenum)
 			err = errors.New(msg)
@@ -68,30 +62,9 @@ func tryCreateZip(imgroot string, wrzip *zip.Writer, db *sql.DB) (count int, err
 	if err != nil {
 		return
 	}
-	return
-}
 
-func CreateZip(imgroot, zippath string, db *sql.DB) (err error) {
-
-	zipfp, err := os.Create(zippath)
-	if err != nil {
-		return
-	}
-	fmt.Printf("Creating Zip[%s]\n", zippath)
-
-	wr := zip.NewWriter(zipfp)
-	cnt, err := tryCreateZip(imgroot, wr, db)
-	wr.Close()
-	zipfp.Close()
-
-	if err != nil {
-		return
-	}
-	if cnt <= 0 {
-		if err = os.Remove(zippath); err != nil {
-			return
-		}
-	}
+	fmt.Printf("Creating ZIP[%s]\n", zippath)
+	_, err = command.Output()
 
 	return
 }
