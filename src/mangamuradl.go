@@ -15,6 +15,7 @@
 // v2.0.4(180312) fix: base64 error case
 // v2.0.5(180315) fix create zip/pdf
 // v2.0.6(180316) support webp
+// v2.0.7(180316) ファイルの禁則文字変換, 画像ファイル名の0詰め
 //
 // 上げたらvar VERSIONを更新すること
 
@@ -28,6 +29,7 @@ import (
 	"golang.org/x/net/publicsuffix"
 	"errors"
 	"os"
+	"path"
 	"regexp"
 	"math/rand"
 	"sync"
@@ -40,7 +42,7 @@ import (
 	"./conf"
 )
 
-var VERSION = "v2.0.6(180316)"
+var VERSION = "v2.0.7(180316)"
 
 func help() {
 	fmt.Printf(`
@@ -220,7 +222,7 @@ func main() {
 		return
 	}
 
-	dbfile := fmt.Sprintf("%s/%s.sqlite3", dbroot, pageId)
+	dbfile := path.Clean(fmt.Sprintf("%s/%s.sqlite3", dbroot, pageId))
 	var db *sql.DB
 	db, err = sql.Open("sqlite3", dbfile)
 	if err != nil {
@@ -278,6 +280,17 @@ func main() {
 		return
 	}
 
+	stmt, err := db.Prepare("select length(max(pagenum)) from page")
+	if err != nil {
+		return
+	}
+	defer stmt.Close()
+	var numLength int
+	err = stmt.QueryRow().Scan(&numLength)
+	if err != nil {
+		return
+	}
+
 	// Non-frame
 	err = func() (err error) {
 		rows, err := db.Query(
@@ -301,7 +314,7 @@ func main() {
 
 			wait.Add(1)
 			go func(root string, pagenum int, url string, is_blob bool, base64str string) {
-				err := img.DownloadImage(root, pagenum, url, false, is_blob, base64str)
+				err := img.DownloadImage(root, pagenum, url, false, is_blob, base64str, numLength)
 				if err != nil {
 					fmt.Printf("%v\n", err)
 				}
@@ -360,7 +373,7 @@ func main() {
 					defer driver.Stop()
 				}
 
-				_, e := img.DownloadFrameImage(imgroot, pagenum, url, page)
+				_, e := img.DownloadFrameImage(imgroot, pagenum, url, page, numLength)
 				if e != nil {
 					err = e
 					return

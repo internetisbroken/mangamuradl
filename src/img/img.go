@@ -4,6 +4,7 @@
 // 180315 update tools
 // 180315 add DownloadFrameImage
 // 180316 add webp support
+// 180316 file name zero padding
 
 package img
 
@@ -23,7 +24,7 @@ import (
 var jpg = ".jpg"
 var webp = ".webp"
 
-func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool, base64str string) (err error) {
+func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool, base64str string, numLength int) (err error) {
 
 	exists, testname := FindImageByNumber(root, pagenum)
 	if exists {
@@ -92,7 +93,8 @@ func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool,
 				return
 			}
 
-			filename = fmt.Sprintf("%s/%d%s", root, pagenum, postfix)
+			fmtFile := fmt.Sprintf(`%%s/%%0%dd%%s`, numLength)
+			filename = fmt.Sprintf(fmtFile, root, pagenum, postfix)
 			file, e := os.Create(filename)
 			if e != nil {
 				err = e
@@ -113,7 +115,7 @@ func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool,
 	return
 }
 
-func DownloadFrameImage(root string, pagenum int, url string, page *agouti.Page) (filename string, err error) {
+func DownloadFrameImage(root string, pagenum int, url string, page *agouti.Page, numLength int) (filename string, err error) {
 	err = page.SetImplicitWait(1000); if err != nil { return }
 	err = page.SetPageLoad(60000); if err != nil { return }
 	err = page.SetScriptTimeout(1000); if err != nil { return }
@@ -181,7 +183,8 @@ func DownloadFrameImage(root string, pagenum int, url string, page *agouti.Page)
 			cmd_horiz.Args = append(cmd_horiz.Args, url)
 		}
 
-		file_horiz := fmt.Sprintf("%s/%d-%d.jpg", root, pagenum, i)
+		fmt_horiz := fmt.Sprintf(`%%s/%%0%dd-%%d.jpg`, numLength)
+		file_horiz := fmt.Sprintf(fmt_horiz, root, pagenum, i)
 		cmd_horiz.Args = append(cmd_horiz.Args, file_horiz)
 
 		_, err = cmd_horiz.Output()
@@ -200,7 +203,8 @@ func DownloadFrameImage(root string, pagenum int, url string, page *agouti.Page)
 	for _, file := range file_lines {
 		cmd_vert.Args = append(cmd_vert.Args, file)
 	}
-	filename = fmt.Sprintf("%s/%d.jpg", root, pagenum)
+	fmtFile := fmt.Sprintf(`%%s/%%0%dd.jpg`, numLength)
+	filename = fmt.Sprintf(fmtFile, root, pagenum)
 	cmd_vert.Args = append(cmd_vert.Args, filename)
 	_, err = cmd_vert.Output()
 	if (err != nil) {

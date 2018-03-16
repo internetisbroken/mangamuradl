@@ -6,6 +6,7 @@ package img
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"errors"
 	"strings"
@@ -27,6 +28,15 @@ func CreateZip(imgroot, zippath string, db *sql.DB) (err error) {
 		return
 	}
 	defer rows.Close()
+
+	// remove zip if exists
+	_, err = os.Stat(zippath)
+	if err == nil {
+		err = os.Remove(zippath)
+		if err != nil {
+			return
+		}
+	}
 
 	//Usage: 7za <command> [<switches>...] <archive_name> [<file_names>...] [<@listfiles...>]
 	command := exec.Cmd{

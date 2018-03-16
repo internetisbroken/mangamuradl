@@ -3,6 +3,7 @@
 // 180312 add base64 error case
 // 180315 update tools
 // 180315 improve getImageUrl
+// 180316 add fixFilename
 
 package mmdl
 
@@ -57,6 +58,8 @@ func getPageInfo(pageid string, tx *sql.Tx, page *agouti.Page) (title string, er
 		err = errors.New("title not found")
 		return
 	}
+
+	title = fixFilename(title)
 
 	// insert title
 	_, err = tx.Exec("insert or ignore into kv(k, v) values ($1, $2)", "title", title)
@@ -478,6 +481,7 @@ func Mmdl(pageId string, db *sql.DB) (title string, err error) {
 		return
 	}
 	if skip {
+		title = fixFilename(title)
 		return
 	}
 
@@ -516,6 +520,20 @@ func Mmdl(pageId string, db *sql.DB) (title string, err error) {
 	if err != nil {
 		return
 	}
+
+	return
+}
+
+func fixFilename(old string) (name string) {
+	name = strings.Replace(old , `/`, `／`, -1)
+	name = strings.Replace(name, `\`, `￥`, -1)
+	name = strings.Replace(name, `:`, `：`, -1)
+	name = strings.Replace(name, `*`, `＊`, -1)
+	name = strings.Replace(name, `?`, `？`, -1)
+	name = strings.Replace(name, `"`, `″`, -1)
+	name = strings.Replace(name, `<`, `＜`, -1)
+	name = strings.Replace(name, `>`, `＞`, -1)
+	name = strings.Replace(name, `|`, `｜`, -1)
 
 	return
 }
