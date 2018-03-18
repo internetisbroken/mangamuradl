@@ -5,6 +5,7 @@
 // 180315 add DownloadFrameImage
 // 180316 add webp support
 // 180316 file name zero padding
+// 180318 support image formats
 
 package img
 
@@ -23,6 +24,13 @@ import (
 
 var jpg = ".jpg"
 var webp = ".webp"
+var png = ".png"
+var bmp = ".bmp"
+var gif = ".gif"
+var tiff = ".tiff"
+var pdf = ".pdf"
+var testpostfix = []string{jpg, webp, png, bmp, gif, tiff, pdf}
+
 
 func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool, base64str string, numLength int) (err error) {
 
@@ -74,17 +82,59 @@ func DownloadImage(root string, pagenum int, url string, is_frame, is_blob bool,
 				postfix = jpg
 
 			} else if (
-				// RIFF
-				0x52 == content[0] &&
-				0x49 == content[1] &&
-				0x46 == content[2] &&
-				0x46 == content[3]) || (
-				// WEBP
-				0x57 == content[0] &&
-				0x45 == content[1] &&
-				0x42 == content[2] &&
-				0x50 == content[3] ) {
+				// WebP
+				'R' == content[0] &&
+				'I' == content[1] &&
+				'F' == content[2] &&
+				'F' == content[3] &&
+				'W' == content[8] &&
+				'E' == content[9] &&
+				'B' == content[10] &&
+				'P' == content[11] ) {
 				postfix = webp
+
+			} else if
+				0x89 == content[0] &&
+				0x50 == content[1] &&
+				0x4e == content[2] &&
+				0x47 == content[3] &&
+				0x0d == content[4] &&
+				0x0a == content[5] &&
+				0x1a == content[6] &&
+				0x0a == content[7] {
+				postfix = png
+
+			} else if
+				'B' == content[0] &&
+				'M' == content[1] {
+				postfix = bmp
+
+			} else if
+				'G' == content[0] &&
+				'I' == content[1] &&
+				'F' == content[2] &&
+				'8' == content[3] &&
+				('7' == content[4] || '9' == content[4]) &&
+				'a' == content[5] {
+				postfix = gif
+
+			} else if (
+				0x49 == content[0] &&
+				0x49 == content[1] &&
+				0x2A == content[2] &&
+				0x00 == content[3] ) || (
+				0x4D == content[0] &&
+				0x4D == content[1] &&
+				0x00 == content[2] &&
+				0x2A == content[3]) {
+				postfix = tiff
+
+			} else if
+				'%' == content[0] &&
+				'P' == content[1] &&
+				'D' == content[2] &&
+				'F' == content[3] {
+				postfix = pdf
 
 			} else {
 				errstr := fmt.Sprintf("Unknown format: %d(%s), header is %x %x %x %x\n",
@@ -225,7 +275,6 @@ func DownloadFrameImage(root string, pagenum int, url string, page *agouti.Page,
 
 func FindImageByNumber(root string, num int) (exist bool, filename string) {
 
-	testpostfix := []string{jpg, webp, ""}
 	fileformat := []string{"%s/%d%s", "%s/%02d%s", "%s/%03d%s", "%s/%04d%s", "%s/%05d%s"}
 	for i := 0; i < len(testpostfix); i++ {
 		for j := 0; j < len(fileformat); j++ {

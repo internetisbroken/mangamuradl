@@ -16,6 +16,7 @@
 // v2.0.5(180315) fix create zip/pdf
 // v2.0.6(180316) support webp
 // v2.0.7(180316) ファイルの禁則文字変換, 画像ファイル名の0詰め
+// v2.0.8(180318) support image formats
 //
 // 上げたらvar VERSIONを更新すること
 
@@ -42,7 +43,7 @@ import (
 	"./conf"
 )
 
-var VERSION = "v2.0.7(180316)"
+var VERSION = "v2.0.8(180318)"
 
 func help() {
 	fmt.Printf(`
@@ -231,7 +232,7 @@ func main() {
 	}
 	if (! checkTable(db)) {
 		db.Close()
-		fmt.Printf("Deleting old database: %s\n", dbfile)
+		//fmt.Printf("Deleting old database: %s\n", dbfile)
 		err = os.Remove(dbfile)
 		if err != nil {
 			fmt.Printf("%v\nPlease delete %s manually\n", err, dbfile)

@@ -1,6 +1,7 @@
 // 180310 created
 // 180315 changed go archive/zip to 7za
 // 180316 support webp
+// 180318 support image formats
 
 package img
 
@@ -62,9 +63,31 @@ func CreateZip(imgroot, zippath string, db *sql.DB) (err error) {
 		ex, file := FindImageByNumber(imgroot, pagenum)
 		if ex {
 			count++
-			if strings.HasSuffix(file, ".webp") {
+			if strings.HasSuffix(file, ".jpg") {
+				// jpg
+				// [<file_names>...]
+				command.Args = append(command.Args, file)
+			} else {
+				var jpgfile string
+				if strings.HasSuffix(file, ".webp") {
+					jpgfile = strings.TrimSuffix(file, ".webp") + ".jpg"
+				} else if strings.HasSuffix(file, ".png") {
+					jpgfile = strings.TrimSuffix(file, ".png") + ".jpg"
+				} else if strings.HasSuffix(file, ".bmp") {
+					jpgfile = strings.TrimSuffix(file, ".bmp") + ".jpg"
+				} else if strings.HasSuffix(file, ".gif") {
+					jpgfile = strings.TrimSuffix(file, ".gif") + ".jpg"
+				} else if strings.HasSuffix(file, ".tiff") {
+					jpgfile = strings.TrimSuffix(file, ".tiff") + ".jpg"
+				} else if strings.HasSuffix(file, ".pdf") {
+					jpgfile = strings.TrimSuffix(file, ".pdf") + ".jpg"
+				} else {
+					fmt.Printf("[FIXME] not implemented: %s\n", file);
+					err = fmt.Errorf("CreateZip: format %s is not supported\n", file)
+					return
+				}
+
 				// convert webp to jpg
-				jpgfile := strings.TrimSuffix(file, ".webp") + ".jpg"
 				cvt, e := tools.GetConvert()
 				if e != nil {
 					err = e
@@ -82,10 +105,6 @@ func CreateZip(imgroot, zippath string, db *sql.DB) (err error) {
 
 				// [<file_names>...]
 				command.Args = append(command.Args, jpgfile)
-			} else {
-				// jpg
-				// [<file_names>...]
-				command.Args = append(command.Args, file)
 			}
 
 		} else{

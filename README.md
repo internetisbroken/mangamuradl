@@ -11,10 +11,16 @@ https://github.com/internetisbroken/mangamuradl/releases
 
 ## 対応一覧
 - ページ画像の取得
-    - jpg単独のページ
+    - 単独のページ(画像1枚で1ページのもの)
+        - jpg (確認済)
+        - webp (確認済)
+        - png (確認済)
+        - bmp
+        - gif
+        - tiff
+        - pdf
     - 分割されたページ(自動で結合される)
     - base64形式でエンコードされたページ(自動でデコードされる)
-    - webp形式のページ
 - ユーザがreCAPTCHAの操作を行うことで全ページの取得が可能
 - PDF作成機能
 - ZIP作成機能
